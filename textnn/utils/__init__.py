@@ -7,6 +7,7 @@ class ProgressIterator(Progbar):
     """
     Enables progress logging while iterating over collections such as lists and iterables.
     """
+
     def __init__(self, iterable: Iterable, description: str = None, target: int = None, interval: int = 1):
         """
         Create a new progress logging iterator instance

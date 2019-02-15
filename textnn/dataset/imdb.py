@@ -2,7 +2,7 @@ import gc
 import hashlib
 import logging
 from pathlib import PurePath, Path
-from typing import List, Tuple, Any, Union, Iterable
+from typing import List, Tuple, Union, Iterable
 
 import numpy as np
 from keras import Model
@@ -55,11 +55,12 @@ def imdb_data_generator(base_folder, pos_only: bool = None, train_only: bool = N
                                                                                  pos_only=pos_only,
                                                                                  train_only=train_only))
 
+
 class ImdbClassifier:
     def __init__(self, data_folder, vocabulary_size: int = 5000, max_text_length: int = 1000,
                  embedding_size: int = 32, pretrained_embeddings_file=None, embed_reserved: bool = True,
                  lstm_layer_size: int = 100,
-                 batch_size: int = 64, num_epochs: int = 3, shuffle_training_data: Union[int, bool] = 113,
+                 batch_size: int = 64, num_epochs: int = 5, shuffle_training_data: Union[int, bool] = 113,
                  ):
         self.data_folder: Path = data_folder if isinstance(data_folder, PurePath) else Path(data_folder)
         self.vocabulary_size = vocabulary_size
@@ -120,7 +121,7 @@ class ImdbClassifier:
                 limit_vocabulary=self.vocabulary_size,
                 default_length=self.max_text_length),
             embedding_matcher=embedding_matcher,
-            )
+        )
 
         if self.model_file.exists():
             logging.info(f"Loading models from: {self.model_file}")
@@ -130,9 +131,11 @@ class ImdbClassifier:
             self.model = train_lstm_classifier(x=x_train, y=y_train,
                                                vocabulary_size=self.text_enc.vocabulary_size,
                                                embedding_size=self.embedding_size,
-                                               embedding_matrix=embedding_matcher.embedding_matrix if embedding_matcher else None,
+                                               embedding_matrix=
+                                               embedding_matcher.embedding_matrix if embedding_matcher else None,
                                                lstm_layer_size=self.lstm_layer_size,
-                                               num_epochs=self.num_epochs, batch_size=self.batch_size, shuffle_data=self.shuffle_training_data,
+                                               num_epochs=self.num_epochs, batch_size=self.batch_size,
+                                               shuffle_data=self.shuffle_training_data,
                                                )
 
             gc.collect()

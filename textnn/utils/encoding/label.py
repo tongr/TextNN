@@ -7,6 +7,7 @@ class LabelEncoder:
     """
     Transforms integer class labels into a binary class matrix.
     """
+
     def __init__(self, num_classes: int = None, labeled_data: Iterable[Tuple[object, int]] = None,
                  label_sample_it: Iterable[int] = None):
         if not num_classes:
