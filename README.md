@@ -15,3 +15,13 @@ Before using the code, please install the necessary software dependencies.
    conda env update -f environment.yml; \
    conda activate textnn
    ```
+## Datasets
+
+#### IMDb - Large Movie Review Dataset
+The ACL IMDb dataset consists of 25,000 highly polar movie reviews for training, and 25,000 for testing and can be found 
+[here](http://ai.stanford.edu/~amaas/data/sentiment/) ([alt. here](https://www.kaggle.com/pankrzysiu/keras-imdb)).
+
+To ru training and evaluation of a LSTM model to predict positive/negative reviews run:
+```bash
+python ./eval_lstm_imdb.py
+```
