@@ -85,6 +85,19 @@ class AbstractTextEncoder(ABC):
         """
         return self.__class__.__name__
 
+    def print_representations(self, example_texts: List[str], print_function=print, **kwargs):
+        """
+        Util method to visualize the way the text representations work
+        :param example_texts: the texts to be encoded
+        :param print_function: function to be used to print the text representation (default: system print)
+        :param kwargs: additional parameters to use to encode and decode data (optional)
+        """
+        seq: np.ndarray = self.encode(example_texts, **kwargs)
+        texts_reproduced: List[str] = list(
+            self.decode_all_str(seq, show_progress=False, **kwargs))
+        for idx, text_reproduced in enumerate(texts_reproduced):
+            print_function("{} --> {} ({})".format(example_texts[idx], repr(text_reproduced), seq[idx]))
+
 
 class AbstractTokenEncoder(AbstractTextEncoder, metaclass=ABCMeta):
 
@@ -557,13 +570,15 @@ class VectorFileEmbeddingMatcher(AbstractEmbeddingMatcher):
         return num_embeddings, embedding_length, vectors
 
 
-def print_representations(example_texts: List[str],
-                          encs: Union[AbstractTextEncoder, Iterable[AbstractTextEncoder]] = None,
-                          **kwargs):
+def print_all_representations(example_texts: List[str],
+                              encs: Union[AbstractTextEncoder, Iterable[AbstractTextEncoder]] = None,
+                              print_function=print,
+                              **kwargs):
     """
     Util method to show the different kinds of text representations
     :param example_texts: the texts to be encoded
     :param encs: list of encoders to use (optional)
+    :param print_function: function to be used to print the text representation (default: system print)
     :param kwargs: parameters to use to create encoders, in case `encs` is None (optional)
     """
     if encs is None:
@@ -582,10 +597,5 @@ def print_representations(example_texts: List[str],
         encs = [encs]
 
     for enc in encs:
-        # sequences
         print("Encoding based on {}:".format(enc.name))
-        seq: np.ndarray = enc.encode(example_texts)
-        texts_reproduced: List[str] = list(
-            enc.decode_all_str(seq, show_padding=False, show_start=True, show_progress=False))
-        for idx, text_reproduced in enumerate(texts_reproduced):
-            print("{} --> {} ({})".format(example_texts[idx], repr(text_reproduced), seq[idx]))
+        enc.print_representations(example_texts)

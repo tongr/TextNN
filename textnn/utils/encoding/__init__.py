@@ -10,17 +10,17 @@ from textnn.utils.encoding.text import AbstractTokenEncoder, AbstractEmbeddingMa
     VectorFileEmbeddingMatcher
 
 
-def prepare_encoders(model_folder, training_data: List[Tuple[str, int]],
+def prepare_encoders(storage_folder, training_data: List[Tuple[str, int]],
                      text_enc_init: Callable[[], AbstractTokenEncoder],
                      embedding_matcher: AbstractEmbeddingMatcher = None,
                      text_encoder_name="text_encoder.pickle",
                      label_encoder_name="label_encoder.pickle",
                      ) -> Tuple[AbstractTokenEncoder, LabelEncoder, np.ndarray, np.ndarray]:
-    if not model_folder.exists():
-        model_folder.mkdir(parents=True, exist_ok=True)
+    if not storage_folder.exists():
+        storage_folder.mkdir(parents=True, exist_ok=True)
 
-    text_encoder_file = model_folder / text_encoder_name
-    label_encoder_file = model_folder / label_encoder_name
+    text_encoder_file = storage_folder / text_encoder_name
+    label_encoder_file = storage_folder / label_encoder_name
 
     text_enc: AbstractTokenEncoder = None
     label_enc: LabelEncoder = None
