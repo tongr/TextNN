@@ -16,7 +16,6 @@ def prepare_encoders(model_folder, training_data: List[Tuple[str, int]],
                      text_encoder_name="text_encoder.pickle",
                      label_encoder_name="label_encoder.pickle",
                      ) -> Tuple[AbstractTokenEncoder, LabelEncoder, np.ndarray, np.ndarray]:
-
     if not model_folder.exists():
         model_folder.mkdir(parents=True, exist_ok=True)
 
