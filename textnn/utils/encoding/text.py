@@ -74,6 +74,10 @@ class AbstractTextEncoder(ABC):
     def _decoded_to_str(self, decoded_obj: object) -> str:
         return str(decoded_obj)
 
+    @abstractmethod
+    def prepare(self, texts: Iterable[str], show_progress: bool = True):
+        raise NotImplementedError("Subclasses should implement this!")
+
     @property
     def name(self) -> str:
         """
@@ -145,7 +149,7 @@ class AbstractTokenEncoder(AbstractTextEncoder, metaclass=ABCMeta):
     def oov_token_index(self) -> int:
         return self.tokenizer.word_index.get(self.oov_token)
 
-    def prepare_vocabulary(self, texts: Iterable[str], show_progress: bool = True) -> Tokenizer:
+    def prepare(self, texts: Iterable[str], show_progress: bool = True) -> Tokenizer:
         if show_progress:
             texts = ProgressIterator(texts, "Preparing vocabulary ...")
 
@@ -215,8 +219,8 @@ class AbstractTokenEncoder(AbstractTextEncoder, metaclass=ABCMeta):
 
         return word_index
 
-    def _encode(self, texts: Iterable[str], **kwargs):
-        assert self.tokenizer.document_count > 0, "TextEncoder has to be initialized using prepare_vocabulary(...)"
+    def encode(self, texts: Iterable[str], **kwargs):
+        assert self.tokenizer.document_count > 0, "TextEncoder has to be initialized using prepare(...)"
         return super().encode(texts=texts, **kwargs)
 
 

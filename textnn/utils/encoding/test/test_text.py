@@ -23,7 +23,7 @@ test_sentence = "Python is a multi-paradigm programming language."
 
 def test_sow_encoder_default():
     encoder = BowEncoder(mode="binary")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence], show_progress=False)
@@ -64,7 +64,7 @@ def test_sow_encoder_limit_vocab():
     #  - plus the top 6 words in the corpus: and(8), python(7), a(4), programming(3), has(3), and the(3)
 
     encoder = BowEncoder(limit_vocabulary=8, mode="binary")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence], show_progress=False)
@@ -101,7 +101,7 @@ def test_sow_encoder_limit_vocab_and_top_words():
     #  - ignored words (top 3): and(8), python(7), a(4)
 
     encoder = BowEncoder(skip_top_words=3, limit_vocabulary=20, mode="binary")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence], show_progress=False)
@@ -132,7 +132,7 @@ def test_sow_encoder_limit_vocab_and_top_words():
 
 def test_sow_encoder_limit_vocab_and_top_words_oov_update_corner_cases():
     encoder = BowEncoder(skip_top_words=1, limit_vocabulary=60, mode="binary")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
     # here we test the tree cases, where the OOV is actually (or not) influenced by skip_top_words=1 (removal of and):
     #  - corpus[0] contains no OOV word(s) and does not contain 'and'
     #  - corpus[1] contains no OOV word(s) and also contains 'and'
@@ -152,7 +152,7 @@ def test_sow_encoder_limit_vocab_and_top_words_oov_update_corner_cases():
 
 def test_bow_encoder_default():
     encoder = BowEncoder(mode="count")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence], show_progress=False)
@@ -193,7 +193,7 @@ def test_bow_encoder_limit_vocab():
     #  - plus the top 6 words in the corpus: and(8), python(7), a(4), programming(3), has(3), and the(3)
 
     encoder = BowEncoder(limit_vocabulary=8, mode="count")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence], show_progress=False)
@@ -230,7 +230,7 @@ def test_bow_encoder_limit_vocab_and_top_words():
     #  - ignored words (top 3): and(8), python(7), a(4)
 
     encoder = BowEncoder(skip_top_words=3, limit_vocabulary=20, mode="count")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence], show_progress=False)
@@ -261,7 +261,7 @@ def test_bow_encoder_limit_vocab_and_top_words():
 
 def test_freq_encoder_default():
     encoder = BowEncoder(mode="freq")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence], show_progress=False)
@@ -302,7 +302,7 @@ def test_freq_encoder_limit_vocab():
     #  - plus the top 6 words in the corpus: and(8), python(7), a(4), programming(3), has(3), and the(3)
 
     encoder = BowEncoder(limit_vocabulary=8, mode="freq")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence], show_progress=False)
@@ -340,7 +340,7 @@ def test_freq_encoder_limit_vocab_and_top_words():
     #  - ignored words (top 3): and(8), python(7), a(4)
 
     encoder = BowEncoder(skip_top_words=3, limit_vocabulary=20, mode="freq")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence], show_progress=False)
@@ -371,7 +371,7 @@ def test_freq_encoder_limit_vocab_and_top_words():
 
 def test_tfidf_encoder_default():
     encoder = BowEncoder(mode="tfidf")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence], show_progress=False)
@@ -412,7 +412,7 @@ def test_tfidf_encoder_limit_vocab():
     #  - plus the top 6 words in the corpus: and(8), python(7), a(4), programming(3), has(3), and the(3)
 
     encoder = BowEncoder(limit_vocabulary=8, mode="tfidf")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence], show_progress=False)
@@ -450,7 +450,7 @@ def test_tfidf_encoder_limit_vocab_and_top_words():
     #  - ignored words (top 3): and(8), python(7), a(4)
 
     encoder = BowEncoder(skip_top_words=3, limit_vocabulary=20, mode="tfidf")
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence], show_progress=False)
@@ -482,7 +482,7 @@ def test_tfidf_encoder_limit_vocab_and_top_words():
 
 def test_sequence_encoder():
     encoder = TokenSequenceEncoder()
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence, "and"], show_progress=False)
@@ -534,7 +534,7 @@ def test_sequence_encoder_limit_vocab():
     #  - reserved token <PAD>, <OOV>, <START>, and <END>
     #  - plus the top 6 words in the corpus: and(8), python(7), a(4), programming(3), has(3), and the(3)
     encoder = TokenSequenceEncoder(limit_vocabulary=10)
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence, "and"], show_progress=False)
@@ -590,7 +590,7 @@ def test_sequence_encoder_limit_vocab_and_top_words():
     #  - ignored words (top 3): and(8), python(7), a(4)
 
     encoder = TokenSequenceEncoder(skip_top_words=3, limit_vocabulary=22)
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence, "Python"], show_progress=False)
@@ -639,7 +639,7 @@ def test_sequence_encoder_limit_vocab_and_top_words():
 
 def test_truncated_sequence_encoder():
     encoder = TokenSequenceEncoder(default_length=5)
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence, "and"], show_progress=False)
@@ -718,7 +718,7 @@ def test_truncated_sequence_encoder():
 
 def test_padded_sequence_encoder():
     encoder = TokenSequenceEncoder(default_length=10)
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence, "and"], show_progress=False)
@@ -775,7 +775,7 @@ def test_padded_sequence_encoder_limit_vocab():
     #  - reserved token <PAD>, <OOV>, <START>, and <END>
     #  - plus the top 6 words in the corpus: and(8), python(7), a(4), programming(3), has(3), and the(3)
     encoder = TokenSequenceEncoder(default_length=10, limit_vocabulary=10)
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence, "and"], show_progress=False)
@@ -836,7 +836,7 @@ def test_padded_sequence_encoder_limit_vocab_and_top_words():
     #  - ignored words (top 3): and(8), python(7), a(4)
 
     encoder = TokenSequenceEncoder(default_length=10, skip_top_words=3, limit_vocabulary=22)
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence, "Python"], show_progress=False)
@@ -910,7 +910,7 @@ class TestEmbeddingMatcher(AbstractEmbeddingMatcher):
 
 def test_embedding_matcher():
     encoder = TokenSequenceEncoder(default_length=10)
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     #
     # do not encode reserved words
@@ -991,7 +991,7 @@ def test_embedding_matcher_limit_vocab():
     #  - reserved token <PAD>, <OOV>, <START>, and <END>
     #  - plus the top 6 words in the corpus: and(8), python(7), a(4), programming(3), has(3), and the(3)
     encoder = TokenSequenceEncoder(default_length=10, limit_vocabulary=10)
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     #
     # do not encode reserved words
@@ -1074,7 +1074,7 @@ def test_embedding_matcher_limit_vocab_and_top_words():
     #  - ignored words (top 3): and(8), python(7), a(4)
 
     encoder = TokenSequenceEncoder(default_length=10, skip_top_words=3, limit_vocabulary=22)
-    encoder.prepare_vocabulary(corpus, show_progress=False)
+    encoder.prepare(corpus, show_progress=False)
 
     #
     # do not encode reserved words
