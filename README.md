@@ -15,6 +15,17 @@ Before using the code, please install the necessary software dependencies.
    conda env update -f environment.yml; \
    conda activate textnn
    ```
+
+### Docker
+Running the code in a docker container can be achieved by building the image:
+```bash
+docker build -t textnn .
+```
+and running the image in interactive mode (conda environment automatically loaded)
+```bash
+docker run -v "${PWD}:/code:ro" -w "/code" -it textnn
+```
+
 ## Datasets
 
 #### IMDb - Large Movie Review Dataset
