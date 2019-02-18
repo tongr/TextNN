@@ -62,110 +62,124 @@ class ImdbClassifier:
                  lstm_layer_size: int = 100,
                  batch_size: int = 64, num_epochs: int = 5, shuffle_training_data: Union[int, bool] = 113,
                  ):
-        self.data_folder: Path = data_folder if isinstance(data_folder, PurePath) else Path(data_folder)
-        self.vocabulary_size = vocabulary_size
-        self.max_text_length = max_text_length
-        self.embedding_size = embedding_size
+        self._data_folder: Path = data_folder if isinstance(data_folder, PurePath) else Path(data_folder)
+        self._vocabulary_size = vocabulary_size
+        self._max_text_length = max_text_length
+        self._embedding_size = embedding_size
         if pretrained_embeddings_file:
             pretrained_embeddings_file = pretrained_embeddings_file if isinstance(pretrained_embeddings_file, PurePath)\
                 else Path(pretrained_embeddings_file)
-        self.pretrained_embeddings_file: Path = pretrained_embeddings_file
-        self.embed_reserved = embed_reserved
-        self.lstm_layer_size = lstm_layer_size
-        self.batch_size = batch_size
-        self.num_epochs = num_epochs
-        self.shuffle_training_data = shuffle_training_data
+        self._pretrained_embeddings_file: Path = pretrained_embeddings_file
+        self._embed_reserved = embed_reserved
+        self._lstm_layer_size = lstm_layer_size
+        self._batch_size = batch_size
+        self._num_epochs = num_epochs
+        self._shuffle_training_data = shuffle_training_data
 
-        self.model: Model = None
-        self.text_enc: AbstractTokenEncoder = None
-        self.label_enc: LabelEncoder = None
+        self._model: Model = None
+        self._text_enc: AbstractTokenEncoder = None
+        self._label_enc: LabelEncoder = None
 
     @property
-    def model_folder(self) -> Path:
+    def _model_folder(self) -> Path:
         # name sub-folder
-        return self.data_folder / ".".join(e for e in [
+        return self._data_folder / ".".join(e for e in [
             # create name by joining all of the following elements with a dot (remove empty strings / None)
             "seq_model",
-            f"vocab{self.vocabulary_size}",
-            f"pad{self.max_text_length}" if self.max_text_length else None,
-            f"emb{self.embedding_size}" if not self.pretrained_embeddings_file else "pretrained_embeddings_{}".format(
-                hashlib.md5(open(self.pretrained_embeddings_file, "rb").read()).hexdigest()),
-            "embed_reserved" if self.embed_reserved else "",
-            f"lstm{self.lstm_layer_size}",
-            f"epochs{self.num_epochs}",
-            f"batch{self.batch_size}",
-            None if self.shuffle_training_data is False else "shuffle({})".format(
-                "random" if self.shuffle_training_data is True else self.shuffle_training_data),
+            f"vocab{self._vocabulary_size}",
+            f"pad{self._max_text_length}" if self._max_text_length else None,
+            f"emb{self._embedding_size}" if not self._pretrained_embeddings_file else "pretrained_embeddings_{}".format(
+                hashlib.md5(open(self._pretrained_embeddings_file, "rb").read()).hexdigest()),
+            "embed_reserved" if self._embed_reserved else "",
+            f"lstm{self._lstm_layer_size}",
+            f"epochs{self._num_epochs}",
+            f"batch{self._batch_size}",
+            None if self._shuffle_training_data is False else "shuffle({})".format(
+                "random" if self._shuffle_training_data is True else self._shuffle_training_data),
             "hd5",
         ] if e)
 
     @property
-    def model_file(self) -> Path:
-        return self.model_folder / "keras_model.hd5"
+    def _model_file(self) -> Path:
+        return self._model_folder / "keras_model.hd5"
 
-    def train_or_load_model(self):
+    def _train_or_load_model(self):
         # get training data
-        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self.data_folder, train_only=True))
+        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
 
         # load encoders and encode training data
         embedding_matcher = None
-        if self.pretrained_embeddings_file and self.pretrained_embeddings_file.exists():
-            embedding_matcher = VectorFileEmbeddingMatcher(fasttext_vector_file=self.pretrained_embeddings_file,
-                                                           encode_reserved_words=self.embed_reserved,
+        if self._pretrained_embeddings_file and self._pretrained_embeddings_file.exists():
+            embedding_matcher = VectorFileEmbeddingMatcher(fasttext_vector_file=self._pretrained_embeddings_file,
+                                                           encode_reserved_words=self._embed_reserved,
                                                            )
 
-        self.text_enc, self.label_enc, x_train, y_train = prepare_encoders(
-            storage_folder=self.model_folder,
+        self._text_enc, self._label_enc, x_train, y_train = prepare_encoders(
+            storage_folder=self._model_folder,
             training_data=training_data,
             text_enc_init=lambda: TokenSequenceEncoder(
-                limit_vocabulary=self.vocabulary_size,
-                default_length=self.max_text_length),
+                limit_vocabulary=self._vocabulary_size,
+                default_length=self._max_text_length),
             embedding_matcher=embedding_matcher,
         )
 
-        if self.model_file.exists():
-            logging.info(f"Loading models from: {self.model_file}")
-            self.model: Model = load_model(str(self.model_file))
+        if self._model_file.exists():
+            logging.info(f"Loading models from: {self._model_file}")
+            self._model: Model = load_model(str(self._model_file))
         else:
             # train the model
-            self.model = train_lstm_classifier(x=x_train, y=y_train,
-                                               vocabulary_size=self.text_enc.vocabulary_size,
-                                               embedding_size=self.embedding_size,
-                                               embedding_matrix=
-                                               embedding_matcher.embedding_matrix if embedding_matcher else None,
-                                               lstm_layer_size=self.lstm_layer_size,
-                                               num_epochs=self.num_epochs, batch_size=self.batch_size,
-                                               shuffle_data=self.shuffle_training_data,
-                                               )
+            self._model = train_lstm_classifier(x=x_train, y=y_train,
+                                                vocabulary_size=self._text_enc.vocabulary_size,
+                                                embedding_size=self._embedding_size,
+                                                embedding_matrix=
+                                                embedding_matcher.embedding_matrix if embedding_matcher else None,
+                                                lstm_layer_size=self._lstm_layer_size,
+                                                num_epochs=self._num_epochs, batch_size=self._batch_size,
+                                                shuffle_data=self._shuffle_training_data,
+                                                )
 
             gc.collect()
             # serialize data for next time
-            save_model(self.model, filepath=str(self.model_file))
+            save_model(self._model, filepath=str(self._model_file))
 
-        self.model.summary()
+        self._model.summary()
 
-        return self.model, self.text_enc, self.label_enc
+        return self._model, self._text_enc, self._label_enc
 
-    def evaluate_model(self):
+    def _evaluate_model(self):
         #
         # extract test data
         #
-        test_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self.data_folder, train_only=False))
+        test_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=False))
 
         # extract data vectors (from test data)
-        x_test: np.ndarray = self.text_enc.encode(texts=list(text for text, lab in test_data))
+        x_test: np.ndarray = self._text_enc.encode(texts=list(text for text, lab in test_data))
 
         # extract label vectors (from test data)
-        y_test_categories: np.ndarray = self.label_enc.make_categorical(labeled_data=test_data)
+        y_test_categories: np.ndarray = self._label_enc.make_categorical(labeled_data=test_data)
         gc.collect()
 
         logging.info("Creating predictions ...")
-        y_predicted_categories = self.model.predict(x_test, batch_size=self.batch_size)
+        y_predicted_categories = self._model.predict(x_test, batch_size=self._batch_size)
         gc.collect()
 
         from sklearn.metrics.classification import accuracy_score, precision_recall_fscore_support
-        y_test = self.label_enc.max_category(y_test_categories)
-        y_predicted = self.label_enc.max_category(y_predicted_categories)
+        y_test = self._label_enc.max_category(y_test_categories)
+        y_predicted = self._label_enc.max_category(y_predicted_categories)
         logging.info("Results:")
         logging.info("{}".format(precision_recall_fscore_support(y_true=y_test, y_pred=y_predicted)))
         logging.info("{}".format(accuracy_score(y_true=y_test, y_pred=y_predicted)))
+
+    def train_and_evaluate(self):
+        # prepare the model
+        self._train_or_load_model()
+
+        # evaluate the performance of the model
+        self._evaluate_model()
+
+    def test_encoding(self, texts: List[str]):
+        # prepare the model
+        self._train_or_load_model()
+
+        # debug the text encoder
+        self._text_enc.print_representations(texts)
