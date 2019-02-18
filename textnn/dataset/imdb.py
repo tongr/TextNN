@@ -17,7 +17,7 @@ from textnn.utils.encoding.text import TokenSequenceEncoder, VectorFileEmbedding
 # IMDb specific functions
 #
 def read_text_file(file_path: Path) -> str:
-    with open(str(file_path), 'r') as file:
+    with open(str(file_path), 'r', encoding='utf8') as file:
         data = file.read()
     return data
 

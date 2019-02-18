@@ -23,7 +23,20 @@ docker build -t textnn .
 ```
 and running the image in interactive mode (conda environment automatically loaded)
 ```bash
-docker run -v "${PWD}:/code:ro" -w "/code" -it textnn
+docker run --rm --runtime=nvidia -v "${PWD}:/code" -w "/code" -it textnn
+```
+
+### AWS
+The recommended EC2 setup (`g2.2xlarge` or better) is based on `Deep Learning AMI (Ubuntu) Version 21.2`
+(ami-0e9085a8d461c2d01) with an increased volumne of 120GB or more. It is recommended to execute code via
+[Docker](#Docker), by setting up the project and creating an image:
+```bash
+git clone https://github.com/tongr/TextNN && cd TextNN && \
+    docker build -t textnn .
+```
+And running the experiments inside the container:
+```bash
+docker run --rm --runtime=nvidia -v "${PWD}:/code" -w "/code" -it textnn
 ```
 
 ## Datasets
