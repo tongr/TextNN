@@ -2,7 +2,7 @@ import gc
 import hashlib
 import logging
 from pathlib import PurePath, Path
-from typing import List, Tuple, Union, Iterable
+from typing import List, Tuple, Union, Iterable, Any
 
 import numpy as np
 from keras import Model
@@ -61,6 +61,7 @@ class ImdbClassifier:
                  embedding_size: int = 32, pretrained_embeddings_file=None, embed_reserved: bool = True,
                  lstm_layer_size: int = 100,
                  batch_size: int = 64, num_epochs: int = 5, shuffle_training_data: Union[int, bool] = 113,
+                 log_config: bool = True,
                  ):
         self._data_folder: Path = data_folder if isinstance(data_folder, PurePath) else Path(data_folder)
         self._vocabulary_size = vocabulary_size
@@ -79,6 +80,20 @@ class ImdbClassifier:
         self._model: Model = None
         self._text_enc: AbstractTokenEncoder = None
         self._label_enc: LabelEncoder = None
+        if log_config:
+            logging.info(f"{self.__class__.__name__}-configuration:\n{self.config}")
+
+    @property
+    def _config_pairs(self) -> Iterable[Tuple[str, Any]]:
+        from itertools import chain
+        kv = chain(
+            self.__dict__.items(),
+            [("_model_file", self._model_file), ("_model_folder", self._model_folder)])
+        return ((key.lstrip("_"), value) for key, value in kv)
+
+    @property
+    def config(self) -> str:
+        return "\n".join(f"  {key}: {value}" for key, value in sorted(self._config_pairs))
 
     @property
     def _model_folder(self) -> Path:

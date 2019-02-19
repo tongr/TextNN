@@ -54,10 +54,11 @@ python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] train-and-evaluate
 where `[IMDB_DATA_FOLDER]` refers to the base folder of the ACL IMDb dataset. Further optional arguments will influence
 the following areas:
  - embedding setup `--pretrained-embeddings-file [PRETRAINED_EMBEDDINGS_FILE]` (`--embed-reserved [True|False]`) or
-   alternativeky `--embedding-size [EMBEDDING_SIZE]`
+   alternatively `--embedding-size [EMBEDDING_SIZE]`
  - text encoding settings `--vocabulary-size [VOCABULARY_SIZE]` and `--max-text-length [MAX_TEXT_LENGTH]`
  - network structure `--lstm-layer-size [LSTM_LAYER_SIZE]`
  - training `--batch-size [BATCH_SIZE]` `--num-epochs [NUM_EPOCHS]` `--shuffle-training-data [True|False|RANDOM_SEED]`
+ - print config information `--log-config [True|False]` (default: `True`)
 
 To debug the selected encoding model run:
 ```bash
