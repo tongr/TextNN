@@ -59,7 +59,8 @@ the following areas:
 
 To debug the selected encoding model run:
 ```bash
-python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] test-encoding
+python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] test-encoding "This is a test sentence" \
+    "This sentence contains the unknown word klncusuvhacccuuandjccbeddusskxhduscj"
 ```
 Aforementioned optional arguments still apply.
 

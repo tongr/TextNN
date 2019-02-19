@@ -177,7 +177,12 @@ class ImdbClassifier:
         # evaluate the performance of the model
         self._evaluate_model()
 
-    def test_encoding(self, texts: List[str]):
+    def test_encoding(self, *texts: Union[Tuple[str], List[str]]):
+        if len(texts) <= 0:
+            logging.warning("Please specify at least one text to encode!")
+            return
+
+        logging.info(f"Trying to encode the following texts: {texts}")
         # prepare the model
         self._train_or_load_model()
 
