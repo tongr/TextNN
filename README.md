@@ -41,6 +41,8 @@ docker run --rm --runtime=nvidia -v "${PWD}:/code" -w "/code" -it textnn
 
 ## Datasets
 
+### Labeled data
+
 #### IMDb - Large Movie Review Dataset
 The ACL IMDb dataset consists of 25,000 highly polar movie reviews for training, and 25,000 for testing and can be found 
 [here](http://ai.stanford.edu/~amaas/data/sentiment/) ([alt. here](https://www.kaggle.com/pankrzysiu/keras-imdb)).
@@ -63,4 +65,9 @@ python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] test-encoding "This 
     "This sentence contains the unknown word klncusuvhacccuuandjccbeddusskxhduscj"
 ```
 Aforementioned optional arguments still apply.
+
+### Pretrained word embeddings
+Pretrained word embeddings can be used by loading provided vec files. For instance,
+[fastText - aligned word vectors](https://fasttext.cc/docs/en/aligned-vectors.html#vectors) (aalternatively, other
+[word vectors](https://fasttext.cc/docs/en/english-vectors.html))
 
