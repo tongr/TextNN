@@ -9,6 +9,7 @@ from keras import Model
 from keras.models import save_model, load_model
 
 from textnn.lstm import train_lstm_classifier
+from textnn.utils import plot2file
 from textnn.utils.encoding import prepare_encoders, LabelEncoder, AbstractTokenEncoder
 from textnn.utils.encoding.text import TokenSequenceEncoder, VectorFileEmbeddingMatcher
 
@@ -104,13 +105,13 @@ class ImdbClassifier:
             f"vocab{self._vocabulary_size}",
             f"pad{self._max_text_length}" if self._max_text_length else None,
             f"emb{self._embedding_size}" if not self._pretrained_embeddings_file else "pretrained_embeddings_{}".format(
-                hashlib.md5(open(self._pretrained_embeddings_file, "rb").read()).hexdigest()),
+                hashlib.md5(open(str(self._pretrained_embeddings_file), "rb").read()).hexdigest()),
             "embed_reserved" if self._embed_reserved else "",
             f"lstm{self._lstm_layer_size}",
             f"epochs{self._num_epochs}",
             f"batch{self._batch_size}",
-            None if self._shuffle_training_data is False else "shuffle({})".format(
-                "random" if self._shuffle_training_data is True else self._shuffle_training_data),
+            None if self._shuffle_training_data is False else "shuffle" if self._shuffle_training_data is True
+            else f"shuffle{self._shuffle_training_data}",
             "hd5",
         ] if e)
 
@@ -142,16 +143,44 @@ class ImdbClassifier:
             logging.info(f"Loading models from: {self._model_file}")
             self._model: Model = load_model(str(self._model_file))
         else:
+            # this model is inspired by the configuration of Susan Li:
+            # https://towardsdatascience.com/a-beginners-guide-on-sentiment-analysis-with-rnn-9e100627c02e
+
             # train the model
-            self._model = train_lstm_classifier(x=x_train, y=y_train,
-                                                vocabulary_size=self._text_enc.vocabulary_size,
-                                                embedding_size=self._embedding_size,
-                                                embedding_matrix=
-                                                embedding_matcher.embedding_matrix if embedding_matcher else None,
-                                                lstm_layer_size=self._lstm_layer_size,
-                                                num_epochs=self._num_epochs, batch_size=self._batch_size,
-                                                shuffle_data=self._shuffle_training_data,
-                                                )
+            self._model, history = train_lstm_classifier(
+                x=x_train, y=y_train,
+                vocabulary_size=self._text_enc.vocabulary_size,
+                embedding_size=self._embedding_size,
+                embedding_matrix=
+                embedding_matcher.embedding_matrix if embedding_matcher else None,
+                lstm_layer_size=self._lstm_layer_size,
+                num_epochs=self._num_epochs, batch_size=self._batch_size,
+                shuffle_data=self._shuffle_training_data,
+            )
+            # plot accuracy
+            plot2file(
+                file=self._model_folder / "accuracy.png",
+                x_values=list(range(self._num_epochs)),
+                y_series={
+                    "Training acc": history.history['acc'],
+                    "Validation acc": history.history['val_acc'],
+                },
+                title="Training and validation accuracy",
+                x_label="Epochs",
+                y_label="Accuracy",
+            )
+            # plot loss
+            plot2file(
+                file=self._model_folder / "loss.png",
+                x_values=list(range(self._num_epochs)),
+                y_series={
+                    "Training loss": history.history['loss'],
+                    "Validation loss": history.history['val_loss'],
+                },
+                title="Training and validation loss",
+                x_label="Epochs",
+                y_label="Loss",
+            )
 
             gc.collect()
             # serialize data for next time

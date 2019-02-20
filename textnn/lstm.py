@@ -1,7 +1,8 @@
-from typing import List, Union
+from typing import List, Union, Tuple
 
 import numpy as np
 from keras import Sequential
+from keras.callbacks import History
 from keras.engine.base_layer import Layer
 from keras.layers import Embedding, LSTM, Dense
 
@@ -10,7 +11,7 @@ def train_lstm_classifier(x: np.ndarray, y: np.ndarray, vocabulary_size,
                           embedding_size=32, embedding_matrix: np.ndarray = None,
                           lstm_layer_size=100, additional_layers: List[Layer] = None,
                           batch_size=32, num_epochs=3, shuffle_data: Union[int, bool] = False,
-                          ) -> Sequential:
+                          ) -> Tuple[Sequential, History]:
     """
     Train a LSTM model for text classification tasks
     :param x: training data
@@ -78,6 +79,6 @@ def train_lstm_classifier(x: np.ndarray, y: np.ndarray, vocabulary_size,
     x_train, y_train = x[batch_size:], y[batch_size:]
 
     # start the training (fit the model to the data)
-    model.fit(x_train, y_train, validation_data=(x_valid, y_valid), batch_size=batch_size, epochs=num_epochs)
+    history = model.fit(x_train, y_train, validation_data=(x_valid, y_valid), batch_size=batch_size, epochs=num_epochs)
 
-    return model
+    return model, history
