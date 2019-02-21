@@ -65,6 +65,18 @@ class ProgressIterator(Progbar):
             self.update(self.target if self.target is not None else self._progress)
 
 
+def join_name(name_parts: list, separator: str = ".", ignore_none: bool = True) -> str:
+    """
+    joins individual parts of a name (i.e., file name consisting of different elements)
+    :param name_parts: the elements to join
+    :param separator: the separator to be used to join
+    :param ignore_none: if True, None values will will not be shown in the joined string
+    :return: the joined string representation of the `name_parts`
+    """
+    # create name by joining all of the following elements with a `separator` (maybe: remove empty strings / None)
+    return separator.join(e for e in name_parts if not ignore_none or e is not None)
+
+
 def plot2file(file: Path, x_values: list, y_series: Dict[str, list],
               title: str = None, x_label: str = None, y_label: str = None, series_styles: List[str] = None):
     """

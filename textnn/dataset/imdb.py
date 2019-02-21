@@ -9,7 +9,7 @@ from keras import Model
 from keras.models import save_model, load_model
 
 from textnn.lstm import train_lstm_classifier
-from textnn.utils import plot2file
+from textnn.utils import plot2file, join_name
 from textnn.utils.encoding import prepare_encoders, LabelEncoder, AbstractTokenEncoder
 from textnn.utils.encoding.text import TokenSequenceEncoder, VectorFileEmbeddingMatcher
 
@@ -89,7 +89,7 @@ class ImdbClassifier:
         from itertools import chain
         kv = chain(
             self.__dict__.items(),
-            [("_model_file", self._model_file), ("_model_folder", self._model_folder)])
+            [("_encoder_folder", self._encoder_folder), ("_model_folder", self._model_folder)])
         return ((key.lstrip("_"), value) for key, value in kv)
 
     @property
@@ -97,13 +97,21 @@ class ImdbClassifier:
         return "\n".join(f"  {key}: {value}" for key, value in sorted(self._config_pairs))
 
     @property
-    def _model_folder(self) -> Path:
+    def _encoder_folder(self) -> Path:
         # name sub-folder
-        return self._data_folder / ".".join(e for e in [
+        return self._data_folder / join_name([
             # create name by joining all of the following elements with a dot (remove empty strings / None)
-            "seq_model",
+            "sequences",
             f"vocab{self._vocabulary_size}",
             f"pad{self._max_text_length}" if self._max_text_length else None,
+        ])
+
+    @property
+    def _model_folder(self) -> Path:
+        # name sub-folder
+        return self._encoder_folder / join_name([
+            # create name by joining all of the following elements with a dot (remove empty strings / None)
+            "lstm",
             f"emb{self._embedding_size}" if not self._pretrained_embeddings_file else "pretrained_embeddings_{}".format(
                 hashlib.md5(open(str(self._pretrained_embeddings_file), "rb").read()).hexdigest()),
             "embed_reserved" if self._embed_reserved else "",
@@ -112,12 +120,7 @@ class ImdbClassifier:
             f"batch{self._batch_size}",
             None if self._shuffle_training_data is False else "shuffle" if self._shuffle_training_data is True
             else f"shuffle{self._shuffle_training_data}",
-            "hd5",
-        ] if e)
-
-    @property
-    def _model_file(self) -> Path:
-        return self._model_folder / "keras_model.hd5"
+        ])
 
     def _train_or_load_model(self):
         # get training data
@@ -129,9 +132,8 @@ class ImdbClassifier:
             embedding_matcher = VectorFileEmbeddingMatcher(fasttext_vector_file=self._pretrained_embeddings_file,
                                                            encode_reserved_words=self._embed_reserved,
                                                            )
-
         self._text_enc, self._label_enc, x_train, y_train = prepare_encoders(
-            storage_folder=self._model_folder,
+            storage_folder=self._encoder_folder,
             training_data=training_data,
             text_enc_init=lambda: TokenSequenceEncoder(
                 limit_vocabulary=self._vocabulary_size,
@@ -139,9 +141,10 @@ class ImdbClassifier:
             embedding_matcher=embedding_matcher,
         )
 
-        if self._model_file.exists():
-            logging.info(f"Loading models from: {self._model_file}")
-            self._model: Model = load_model(str(self._model_file))
+        model_file = self._model_folder / "keras_model.hd5"
+        if model_file.exists():
+            logging.info(f"Loading models from: {model_file}")
+            self._model: Model = load_model(str(model_file))
         else:
             # this model is inspired by the configuration of Susan Li:
             # https://towardsdatascience.com/a-beginners-guide-on-sentiment-analysis-with-rnn-9e100627c02e
@@ -184,7 +187,7 @@ class ImdbClassifier:
 
             gc.collect()
             # serialize data for next time
-            save_model(self._model, filepath=str(self._model_file))
+            save_model(self._model, filepath=str(model_file))
 
         self._model.summary()
 
