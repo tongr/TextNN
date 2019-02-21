@@ -116,3 +116,24 @@ def plot2file(file: Path, x_values: list, y_series: Dict[str, list],
         plt.clf()
     except ImportError:
         logging.warning(f"Unable to create plot in {file}, missing Matplotlib dependency!")
+
+
+def read_text_file(file_path: Path) -> str:
+    """
+    read text file contents
+    :param file_path: the file path to read
+    :return: the contents of the file
+    """
+    with open(str(file_path), 'r', encoding='utf8') as file:
+        text = file.read()
+    return text
+
+
+def write_text_file(text: str, file_path: Path):
+    """
+    write text to file
+    :param text: the text to persist
+    :param file_path: the file path to use
+    """
+    with open(str(file_path), 'w', encoding='utf8') as file:
+        file.write(text)

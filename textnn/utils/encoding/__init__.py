@@ -54,7 +54,7 @@ def prepare_encoders(storage_folder, training_data: List[Tuple[str, int]],
     y_train: np.ndarray = label_enc.make_categorical(labeled_data=training_data)
 
     # cleanup memory
-    text_list = None
+    del text_list
     gc.collect()
 
     return text_enc, label_enc, x_train, y_train

@@ -9,7 +9,7 @@ from keras import Model
 from keras.models import save_model, load_model
 
 from textnn.lstm import train_lstm_classifier
-from textnn.utils import plot2file, join_name
+from textnn.utils import plot2file, join_name, read_text_file, write_text_file
 from textnn.utils.encoding import prepare_encoders, LabelEncoder, AbstractTokenEncoder
 from textnn.utils.encoding.text import TokenSequenceEncoder, VectorFileEmbeddingMatcher
 
@@ -17,12 +17,6 @@ from textnn.utils.encoding.text import TokenSequenceEncoder, VectorFileEmbedding
 #
 # IMDb specific functions
 #
-def read_text_file(file_path: Path) -> str:
-    with open(str(file_path), 'r', encoding='utf8') as file:
-        data = file.read()
-    return data
-
-
 def imdb_file_ref_generator(base_folder, pos_only: bool = None, train_only: bool = None) -> Iterable[Tuple[Path, int]]:
     from pathlib import Path
     from itertools import chain
@@ -186,7 +180,7 @@ class ImdbClassifier:
                 x_label="Epochs",
                 y_label="Loss",
             )
-
+            del embedding_matcher, history
             gc.collect()
             # serialize data for next time
             save_model(self._model, filepath=str(model_file))
@@ -218,6 +212,15 @@ class ImdbClassifier:
         logging.info("Results:")
         logging.info("{}".format(precision_recall_fscore_support(y_true=y_test, y_pred=y_predicted)))
         logging.info("{}".format(accuracy_score(y_true=y_test, y_pred=y_predicted)))
+
+        from sklearn.metrics.classification import classification_report
+        import json
+        write_text_file(
+            file_path=self._model_folder / "test.json",
+            text=json.dumps(classification_report(y_true=y_test,
+                                                  y_pred=y_predicted,
+                                                  target_names=["neg", "pos"],
+                                                  output_dict=True)))
 
     def train_and_evaluate(self):
         # prepare the model
