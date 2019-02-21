@@ -12,7 +12,6 @@ from textnn.utils.encoding.text import AbstractTokenEncoder, AbstractEmbeddingMa
 
 def prepare_encoders(storage_folder, training_data: List[Tuple[str, int]],
                      text_enc_init: Callable[[], AbstractTokenEncoder],
-                     embedding_matcher: AbstractEmbeddingMatcher = None,
                      text_encoder_name="text_encoder.pickle",
                      label_encoder_name="label_encoder.pickle",
                      ) -> Tuple[AbstractTokenEncoder, LabelEncoder, np.ndarray, np.ndarray]:
@@ -36,10 +35,6 @@ def prepare_encoders(storage_folder, training_data: List[Tuple[str, int]],
         # extract vocab (from training data)
         text_enc = text_enc_init()
         text_enc.prepare(texts=text_list, show_progress=True)
-
-        # match embeddings
-        if embedding_matcher:
-            embedding_matcher.reload_embeddings(token_encoder=text_enc, show_progress=True)
 
         # create label encoder based on training data
         label_enc = LabelEncoder(labeled_data=training_data)

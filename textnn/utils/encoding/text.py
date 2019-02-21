@@ -477,7 +477,7 @@ class AbstractEmbeddingMatcher(ABC):
         num_embeddings, embedding_length, vectors = self.get_vector_source()
 
         if show_progress:
-            vectors = ProgressIterator(vectors, "Initializing embedding cache ...", target=num_embeddings, interval=5)
+            vectors = ProgressIterator(vectors, "Initializing embedding matrix ...", target=num_embeddings, interval=5)
 
         # fixed: embedding_matrix = np.zeros([self._skip_top_words + self.vocabulary_size, embedding_length])
         # remove skip words from embedding matrix

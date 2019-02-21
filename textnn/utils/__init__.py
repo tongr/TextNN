@@ -70,7 +70,7 @@ def join_name(name_parts: list, separator: str = ".", ignore_none: bool = True) 
     joins individual parts of a name (i.e., file name consisting of different elements)
     :param name_parts: the elements to join
     :param separator: the separator to be used to join
-    :param ignore_none: if True, None values will will not be shown in the joined string
+    :param ignore_none: if True, None values will not be shown in the joined string
     :return: the joined string representation of the `name_parts`
     """
     # create name by joining all of the following elements with a `separator` (maybe: remove empty strings / None)

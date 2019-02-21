@@ -114,7 +114,7 @@ class ImdbClassifier:
             "lstm",
             f"emb{self._embedding_size}" if not self._pretrained_embeddings_file else "pretrained_embeddings_{}".format(
                 hashlib.md5(open(str(self._pretrained_embeddings_file), "rb").read()).hexdigest()),
-            "embed_reserved" if self._embed_reserved else "",
+            "embed_reserved" if self._embed_reserved else None,
             f"lstm{self._lstm_layer_size}",
             f"epochs{self._num_epochs}",
             f"batch{self._batch_size}",
@@ -126,19 +126,12 @@ class ImdbClassifier:
         # get training data
         training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
 
-        # load encoders and encode training data
-        embedding_matcher = None
-        if self._pretrained_embeddings_file and self._pretrained_embeddings_file.exists():
-            embedding_matcher = VectorFileEmbeddingMatcher(fasttext_vector_file=self._pretrained_embeddings_file,
-                                                           encode_reserved_words=self._embed_reserved,
-                                                           )
         self._text_enc, self._label_enc, x_train, y_train = prepare_encoders(
             storage_folder=self._encoder_folder,
             training_data=training_data,
             text_enc_init=lambda: TokenSequenceEncoder(
                 limit_vocabulary=self._vocabulary_size,
                 default_length=self._max_text_length),
-            embedding_matcher=embedding_matcher,
         )
 
         model_file = self._model_folder / "keras_model.hd5"
@@ -148,6 +141,15 @@ class ImdbClassifier:
         else:
             # this model is inspired by the configuration of Susan Li:
             # https://towardsdatascience.com/a-beginners-guide-on-sentiment-analysis-with-rnn-9e100627c02e
+
+            # load encoders and encode training data
+            embedding_matcher = None
+            if self._pretrained_embeddings_file and self._pretrained_embeddings_file.exists():
+                embedding_matcher = VectorFileEmbeddingMatcher(fasttext_vector_file=self._pretrained_embeddings_file,
+                                                               encode_reserved_words=self._embed_reserved,
+                                                               )
+                # match embeddings with text/token encoder
+                embedding_matcher.reload_embeddings(token_encoder=self._text_enc, show_progress=True)
 
             # train the model
             self._model, history = train_lstm_classifier(
