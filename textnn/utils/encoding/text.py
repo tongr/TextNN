@@ -85,7 +85,7 @@ class AbstractTextEncoder(ABC):
         """
         return self.__class__.__name__
 
-    def print_representations(self, example_texts: List[str], print_function=print, **kwargs):
+    def print_representations(self, example_texts: Union[Tuple[str], List[str]], print_function=print, **kwargs):
         """
         Util method to visualize the way the text representations work
         :param example_texts: the texts to be encoded

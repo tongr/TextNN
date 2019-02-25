@@ -52,10 +52,12 @@ def imdb_data_generator(base_folder, pos_only: bool = None, train_only: bool = N
 
 
 class ImdbClassifier:
-    def __init__(self, data_folder, vocabulary_size: int = 5000, max_text_length: int = 1000,
-                 embedding_size: int = 32, pretrained_embeddings_file=None, embed_reserved: bool = True,
-                 lstm_layer_size: int = 100,
-                 batch_size: int = 64, num_epochs: int = 5, shuffle_training_data: Union[int, bool] = 113,
+    def __init__(self, data_folder, vocabulary_size: int = 4096, max_text_length: int = 512,
+                 embedding_size: int = 32,
+                 pretrained_embeddings_file=None, embed_reserved: bool = True, retrain_embedding_matrix: bool = False,
+                 lstm_layer_size: int = 16,
+                 batch_size: int = 1024, num_epochs: int = 5,
+                 shuffle_training_data: Union[int, bool] = 113, validation_split: float = .05,
                  log_config: bool = True,
                  ):
         self._data_folder: Path = data_folder if isinstance(data_folder, PurePath) else Path(data_folder)
@@ -66,11 +68,13 @@ class ImdbClassifier:
             pretrained_embeddings_file = pretrained_embeddings_file if isinstance(pretrained_embeddings_file, PurePath)\
                 else Path(pretrained_embeddings_file)
         self._pretrained_embeddings_file: Path = pretrained_embeddings_file
+        self._retrain_embedding_matrix: bool = retrain_embedding_matrix
         self._embed_reserved = embed_reserved
         self._lstm_layer_size = lstm_layer_size
         self._batch_size = batch_size
         self._num_epochs = num_epochs
         self._shuffle_training_data = shuffle_training_data
+        self._validation_split = validation_split
 
         self._model: Model = None
         self._text_enc: AbstractTokenEncoder = None
@@ -79,7 +83,7 @@ class ImdbClassifier:
             logging.info(f"{self.__class__.__name__}-configuration:\n{self.config}")
 
     @property
-    def _config_pairs(self) -> Iterable[Tuple[str, Any]]:
+    def _config_parameters(self) -> Iterable[Tuple[str, Any]]:
         from itertools import chain
         kv = chain(
             self.__dict__.items(),
@@ -88,7 +92,7 @@ class ImdbClassifier:
 
     @property
     def config(self) -> str:
-        return "\n".join(f"  {key}: {value}" for key, value in sorted(self._config_pairs))
+        return "\n".join(f"  {key}: {value}" for key, value in sorted(self._config_parameters))
 
     @property
     def _encoder_folder(self) -> Path:
@@ -106,20 +110,23 @@ class ImdbClassifier:
         return self._encoder_folder / join_name([
             # create name by joining all of the following elements with a dot (remove empty strings / None)
             "lstm",
-            f"emb{self._embedding_size}" if not self._pretrained_embeddings_file else "pretrained_embeddings_{}".format(
-                hashlib.md5(open(str(self._pretrained_embeddings_file), "rb").read()).hexdigest()),
+            f"emb{self._embedding_size}" if not self._pretrained_embeddings_file
+            else "pretrained_embeddings_{hash}{retrain}".format(
+                hash=hashlib.md5(open(str(self._pretrained_embeddings_file), "rb").read()).hexdigest(),
+                retrain="_retrained" if self._retrain_embedding_matrix else ""),
             "embed_reserved" if self._embed_reserved else None,
             f"lstm{self._lstm_layer_size}",
             f"epochs{self._num_epochs}",
             f"batch{self._batch_size}",
             None if self._shuffle_training_data is False else "shuffle" if self._shuffle_training_data is True
             else f"shuffle{self._shuffle_training_data}",
+            f"validation_split{self._validation_split}" if self._validation_split else None,
         ])
 
-    def _train_or_load_model(self):
-        # get training data
-        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
-
+    def _train_or_load_model_and_encoders(self, training_data: List[Tuple[str, int]]) -> Tuple[Model,
+                                                                                               AbstractTokenEncoder,
+                                                                                               LabelEncoder]:
+        # prepare encoder and encode training data
         self._text_enc, self._label_enc, x_train, y_train = prepare_encoders(
             storage_folder=self._encoder_folder,
             training_data=training_data,
@@ -127,7 +134,11 @@ class ImdbClassifier:
                 limit_vocabulary=self._vocabulary_size,
                 default_length=self._max_text_length),
         )
+        # load or train model
+        self._train_or_load_model(x_train, y_train)
+        return self._model, self._text_enc, self._label_enc
 
+    def _train_or_load_model(self, x_train: np.ndarray, y_train: np.ndarray) -> Model:
         model_file = self._model_folder / "keras_model.hd5"
         if model_file.exists():
             logging.info(f"Loading models from: {model_file}")
@@ -150,35 +161,29 @@ class ImdbClassifier:
                 x=x_train, y=y_train,
                 vocabulary_size=self._text_enc.vocabulary_size,
                 embedding_size=self._embedding_size,
-                embedding_matrix=
-                embedding_matcher.embedding_matrix if embedding_matcher else None,
+                embedding_matrix=embedding_matcher.embedding_matrix if embedding_matcher else None,
+                retrain_matrix=self._retrain_embedding_matrix,
                 lstm_layer_size=self._lstm_layer_size,
                 num_epochs=self._num_epochs, batch_size=self._batch_size,
-                shuffle_data=self._shuffle_training_data,
+                shuffle_data=self._shuffle_training_data, validation_split=self._validation_split,
             )
             # plot accuracy
+            y_series = {"Training acc": history.history["acc"], }
+            if "val_acc" in history.history:
+                y_series["Validation acc"] = history.history["val_acc"]
             plot2file(
                 file=self._model_folder / "accuracy.png",
-                x_values=list(range(self._num_epochs)),
-                y_series={
-                    "Training acc": history.history['acc'],
-                    "Validation acc": history.history['val_acc'],
-                },
-                title="Training and validation accuracy",
-                x_label="Epochs",
-                y_label="Accuracy",
+                x_values=list(range(self._num_epochs)), y_series=y_series,
+                title="Training and validation accuracy",x_label="Epochs", y_label="Accuracy",
             )
             # plot loss
+            y_series = {"Training loss": history.history['loss'], }
+            if "val_loss" in history.history:
+                y_series["Validation loss"] = history.history["val_loss"]
             plot2file(
                 file=self._model_folder / "loss.png",
-                x_values=list(range(self._num_epochs)),
-                y_series={
-                    "Training loss": history.history['loss'],
-                    "Validation loss": history.history['val_loss'],
-                },
-                title="Training and validation loss",
-                x_label="Epochs",
-                y_label="Loss",
+                x_values=list(range(self._num_epochs)), y_series=y_series,
+                title="Training and validation loss", x_label="Epochs", y_label="Loss",
             )
             del embedding_matcher, history
             gc.collect()
@@ -187,14 +192,9 @@ class ImdbClassifier:
 
         self._model.summary()
 
-        return self._model, self._text_enc, self._label_enc
+        return self._model
 
-    def _evaluate_model(self):
-        #
-        # extract test data
-        #
-        test_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=False))
-
+    def _evaluate_model(self, test_data: List[Tuple[str, int]]):
         # extract data vectors (from test data)
         x_test: np.ndarray = self._text_enc.encode(texts=list(text for text, lab in test_data))
 
@@ -223,20 +223,33 @@ class ImdbClassifier:
                                                   output_dict=True)))
 
     def train_and_evaluate(self):
+        # get training data
+        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
         # prepare the model
-        self._train_or_load_model()
+        self._train_or_load_model_and_encoders(training_data)
 
+        del training_data
+        gc.collect()
+
+        # extract test data
+        test_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=False))
         # evaluate the performance of the model
-        self._evaluate_model()
+        self._evaluate_model(test_data)
 
-    def test_encoding(self, *texts: Union[Tuple[str], List[str]]):
+        del test_data
+        gc.collect()
+
+    def test_encoding(self, *texts: str):
         if len(texts) <= 0:
             logging.warning("Please specify at least one text to encode!")
             return
 
-        logging.info(f"Trying to encode the following texts: {texts}")
+        # get training data
+        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
+
         # prepare the model
-        self._train_or_load_model()
+        self._train_or_load_model_and_encoders(training_data)
 
         # debug the text encoder
+        logging.info(f"Trying to encode the following texts: {texts}")
         self._text_enc.print_representations(texts)
