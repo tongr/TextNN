@@ -110,11 +110,10 @@ class ImdbClassifier:
         return self._encoder_folder / join_name([
             # create name by joining all of the following elements with a dot (remove empty strings / None)
             "lstm",
-            f"emb{self._embedding_size}" if not self._pretrained_embeddings_file
-            else "pretrained_embeddings_{hash}{retrain}".format(
-                hash=hashlib.md5(open(str(self._pretrained_embeddings_file), "rb").read()).hexdigest(),
-                retrain="_retrained" if self._retrain_embedding_matrix else ""),
-            "embed_reserved" if self._embed_reserved else None,
+            f"emb{self._embedding_size}" if not self._pretrained_embeddings_file else "pretrained_embeddings_{}".format(
+                hashlib.md5(open(str(self._pretrained_embeddings_file), "rb").read()).hexdigest()),
+            f"retrained" if self._pretrained_embeddings_file and self._retrain_embedding_matrix else None,
+            "embed_reserved" if self._pretrained_embeddings_file and self._embed_reserved else None,
             f"lstm{self._lstm_layer_size}",
             f"epochs{self._num_epochs}",
             f"batch{self._batch_size}",
@@ -214,6 +213,7 @@ class ImdbClassifier:
         logging.info("{}".format(accuracy_score(y_true=y_test, y_pred=y_predicted)))
 
         from sklearn.metrics.classification import classification_report
+        logging.info("\n{}".format(classification_report(y_true=y_test, y_pred=y_predicted, target_names=["neg", "pos"],)))
         import json
         write_text_file(
             file_path=self._model_folder / "test.json",
