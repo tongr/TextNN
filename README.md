@@ -56,7 +56,8 @@ the following areas:
  - embedding setup `--pretrained-embeddings-file [PRETRAINED_EMBEDDINGS_FILE]` (`--embed-reserved [True|False]` and/or
    `--retrain-embedding-matrix [True|False]`) or alternatively `--embedding-size [EMBEDDING_SIZE]`
  - text encoding settings `--vocabulary-size [VOCABULARY_SIZE]` and `--max-text-length [MAX_TEXT_LENGTH]`
- - network structure `--lstm-layer-size [LSTM_LAYER_SIZE]`
+ - network structure `--layer_definitions [LAYER_DEFINITIONS]` (layer definitions separated by pipe, e.g.,
+   `--layer-definitions 'LSTM(16)|Dense(8)'`)
  - training `--batch-size [BATCH_SIZE]`, `--num-epochs [NUM_EPOCHS]`, `--learning-rate [LEARNING_RATE]`,
    `--learning-decay [LEARNING_DECAY]`, `--shuffle-training-data [True|False|RANDOM_SEED]` (`RANDOM_SEED` refers to an
    `int` value used as the seed for the random number generator)

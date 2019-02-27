@@ -4,8 +4,8 @@ import logging
 from pathlib import PurePath, Path
 from typing import List, Tuple, Union, Iterable, Any
 
-import numpy as np
 from keras import Model
+from keras.layers import *
 from keras.models import save_model, load_model
 
 from textnn.lstm import train_lstm_classifier
@@ -55,8 +55,8 @@ class ImdbClassifier:
     def __init__(self, data_folder, vocabulary_size: int = 4096, max_text_length: int = 512,
                  embedding_size: int = 32,
                  pretrained_embeddings_file=None, embed_reserved: bool = True, retrain_embedding_matrix: bool = False,
-                 lstm_layer_size: int = 16,
-                 batch_size: int = 1024, num_epochs: int = 5,
+                 layer_definitions: str = None,
+                 batch_size: int = 1024, num_epochs: int = 25, learning_rate: float = 0.001, learning_decay: float = 0.,
                  shuffle_training_data: Union[int, bool] = 113, validation_split: float = .05,
                  log_config: bool = True,
                  ):
@@ -70,15 +70,18 @@ class ImdbClassifier:
         self._pretrained_embeddings_file: Path = pretrained_embeddings_file
         self._retrain_embedding_matrix: bool = retrain_embedding_matrix
         self._embed_reserved = embed_reserved
-        self._lstm_layer_size = lstm_layer_size
         self._batch_size = batch_size
         self._num_epochs = num_epochs
+        self._learning_rate = learning_rate
+        self._learning_decay = learning_decay
         self._shuffle_training_data = shuffle_training_data
         self._validation_split = validation_split
 
         self._model: Model = None
         self._text_enc: AbstractTokenEncoder = None
         self._label_enc: LabelEncoder = None
+        self._layers, self._layer_definitions = self.parse_layer_definitions(
+            layer_definitions if layer_definitions else "Dropout(0.5)|LSTM(8,dropout=0.5)")
         if log_config:
             logging.info(f"{self.__class__.__name__}-configuration:\n{self.config}")
 
@@ -104,19 +107,48 @@ class ImdbClassifier:
             f"pad{self._max_text_length}" if self._max_text_length else None,
         ])
 
+    @staticmethod
+    def parse_layer_definitions(layer_definitions: Union[str, List[str]], sep="|"):
+        def layer_class_names(packages):
+            import inspect
+            import importlib
+            classes = set()
+            for package in packages:
+                module = importlib.import_module(package)
+                for name, obj in inspect.getmembers(module, inspect.isclass):
+                    classes.add(obj.__name__)
+            return classes
+
+        if sep:
+            layer_definitions = layer_definitions.split(sep)
+
+        import re
+        p = re.compile("^({})\([^\(]*\)$".format("|".join(layer_class_names(["keras.layers"]))))
+        layers = []
+        for position, layer_def in enumerate(layer_definitions):
+            m = p.fullmatch(layer_def)
+            if not m:
+                logging.error(f"Illegal layer definition found in position {position}: \"{layer_def}\"")
+                raise ValueError(f"Illegal layer definition found in position {position}: \"{layer_def}\"")
+
+            layers.append(eval(layer_def))
+        return layers, layer_definitions
+
     @property
     def _model_folder(self) -> Path:
         # name sub-folder
         return self._encoder_folder / join_name([
             # create name by joining all of the following elements with a dot (remove empty strings / None)
-            "lstm",
+            "sequential",
             f"emb{self._embedding_size}" if not self._pretrained_embeddings_file else "pretrained_embeddings_{}".format(
                 hashlib.md5(open(str(self._pretrained_embeddings_file), "rb").read()).hexdigest()),
             f"retrained" if self._pretrained_embeddings_file and self._retrain_embedding_matrix else None,
             "embed_reserved" if self._pretrained_embeddings_file and self._embed_reserved else None,
-            f"lstm{self._lstm_layer_size}",
+            "layers_{}".format("_".join(layer.replace(".", "_") for layer in self._layer_definitions)),
             f"epochs{self._num_epochs}",
             f"batch{self._batch_size}",
+            f"lr{self._learning_rate}",
+            f"decay{self._learning_decay}",
             None if self._shuffle_training_data is False else "shuffle" if self._shuffle_training_data is True
             else f"shuffle{self._shuffle_training_data}",
             f"validation_split{self._validation_split}" if self._validation_split else None,
@@ -162,8 +194,9 @@ class ImdbClassifier:
                 embedding_size=self._embedding_size,
                 embedding_matrix=embedding_matcher.embedding_matrix if embedding_matcher else None,
                 retrain_matrix=self._retrain_embedding_matrix,
-                lstm_layer_size=self._lstm_layer_size,
+                additional_layers=self._layers,
                 num_epochs=self._num_epochs, batch_size=self._batch_size,
+                lr=self._learning_rate, decay=self._learning_decay,
                 shuffle_data=self._shuffle_training_data, validation_split=self._validation_split,
             )
             # plot accuracy
