@@ -10,7 +10,7 @@ from keras.layers import Embedding, LSTM, Dense
 def train_lstm_classifier(x: np.ndarray, y: np.ndarray, vocabulary_size,
                           embedding_size=32, embedding_matrix: np.ndarray = None, retrain_matrix: bool = False,
                           lstm_layer_size=100, additional_layers: List[Layer] = None,
-                          batch_size=32, num_epochs=3,
+                          batch_size=32, num_epochs=3, lr=0.001, decay=0.,
                           shuffle_data: Union[int, bool] = False, validation_split: float = 0.,
                           validation_data: Union[Tuple[np.ndarray, np.ndarray],
                                                  Tuple[np.ndarray, np.ndarray, Any]] = None,
@@ -72,7 +72,7 @@ def train_lstm_classifier(x: np.ndarray, y: np.ndarray, vocabulary_size,
     model.summary()
 
     model.compile(loss=loss,
-                  optimizer='adam',
+                  optimizer=Adam(lr=lr, decay=decay),
                   metrics=['accuracy'])
 
     if shuffle_data is not False:
