@@ -65,7 +65,7 @@ class ProgressIterator(Progbar):
             self.update(self.target if self.target is not None else self._progress)
 
 
-def join_name(name_parts: list, separator: str = ".", ignore_none: bool = True) -> str:
+def join_name(name_parts: list, separator: str = "__", ignore_none: bool = True) -> str:
     """
     joins individual parts of a name (i.e., file name consisting of different elements)
     :param name_parts: the elements to join
@@ -97,12 +97,15 @@ def plot2file(file: Path, x_values: list, y_series: Dict[str, list],
         if not series_styles:
             # default styles: iterate through different combinations
             series_styles = list(f"{color}{marker}{line}"
-                                for line in "- -- -. :".split()
-                                for marker in " o v ^ s P X".split(" ")
-                                for color in "b r g c m y k".split())
+                                 for line in "- -- -. :".split()
+                                 for marker in " o v ^ s P X".split(" ")
+                                 for color in "b r g c m y k".split())
 
+        max_len = max(len(l) for l in [x_values]+list(y_series.values()))
+        x_values = x_values + [None] * (max_len - len(x_values))
         for idx, (series_label, y_values) in enumerate(y_series.items()):
             style = series_styles[idx % len(series_styles)]
+            y_values = y_values + [None] * (max_len - len(y_values))
             plt.plot(x_values, y_values, style, label=series_label)
 
         plt.title(title)

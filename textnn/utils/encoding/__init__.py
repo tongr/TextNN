@@ -12,8 +12,8 @@ from textnn.utils.encoding.text import AbstractTokenEncoder, AbstractEmbeddingMa
 
 def prepare_encoders(storage_folder, training_data: List[Tuple[str, int]],
                      text_enc_init: Callable[[], AbstractTokenEncoder],
-                     text_encoder_name="text_encoder.pickle",
-                     label_encoder_name="label_encoder.pickle",
+                     text_encoder_name="text-encoder.pickle",
+                     label_encoder_name="label-encoder.pickle",
                      ) -> Tuple[AbstractTokenEncoder, LabelEncoder, np.ndarray, np.ndarray]:
     if not storage_folder.exists():
         storage_folder.mkdir(parents=True, exist_ok=True)
@@ -30,7 +30,7 @@ def prepare_encoders(storage_folder, training_data: List[Tuple[str, int]],
         with open(label_encoder_file, "rb") as pickle_file:
             label_enc: LabelEncoder = pickle.load(pickle_file)
 
-    text_list = list(text for text, lab in training_data)
+    text_list = list(tex for tex, lab in training_data)
     if not text_enc or not label_enc:
         # extract vocab (from training data)
         text_enc = text_enc_init()

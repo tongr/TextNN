@@ -4,10 +4,10 @@ import logging
 from pathlib import PurePath, Path
 from typing import List, Tuple, Union, Iterable, Any
 
-from keras import Model
+from keras import Sequential
 from keras.layers import *
 from keras.models import save_model, load_model
-
+from keras.callbacks import History, CSVLogger
 from textnn.lstm import train_lstm_classifier
 from textnn.utils import plot2file, join_name, read_text_file, write_text_file
 from textnn.utils.encoding import prepare_encoders, LabelEncoder, AbstractTokenEncoder
@@ -77,7 +77,7 @@ class ImdbClassifier:
         self._shuffle_training_data = shuffle_training_data
         self._validation_split = validation_split
 
-        self._model: Model = None
+        self._model: Sequential = None
         self._text_enc: AbstractTokenEncoder = None
         self._label_enc: LabelEncoder = None
         self._layers, self._layer_definitions = self.parse_layer_definitions(
@@ -90,7 +90,9 @@ class ImdbClassifier:
         from itertools import chain
         kv = chain(
             self.__dict__.items(),
-            [("_encoder_folder", self._encoder_folder), ("_model_folder", self._model_folder)])
+            [("_encoder_folder", self._encoder_folder),
+             ("_model_folder", self._model_folder),
+             ("_experiment_folder", self._experiment_folder)])
         return ((key.lstrip("_"), value) for key, value in kv)
 
     @property
@@ -101,7 +103,7 @@ class ImdbClassifier:
     def _encoder_folder(self) -> Path:
         # name sub-folder
         return self._data_folder / join_name([
-            # create name by joining all of the following elements with a dot (remove empty strings / None)
+            # create name by joining all of the following elements (remove empty strings / None)
             "sequences",
             f"vocab{self._vocabulary_size}",
             f"pad{self._max_text_length}" if self._max_text_length else None,
@@ -123,7 +125,7 @@ class ImdbClassifier:
             layer_definitions = layer_definitions.split(sep)
 
         import re
-        p = re.compile("^({})\([^\(]*\)$".format("|".join(layer_class_names(["keras.layers"]))))
+        p = re.compile("^({})\([^(]*\)$".format("|".join(layer_class_names(["keras.layers"]))))
         layers = []
         for position, layer_def in enumerate(layer_definitions):
             m = p.fullmatch(layer_def)
@@ -138,23 +140,31 @@ class ImdbClassifier:
     def _model_folder(self) -> Path:
         # name sub-folder
         return self._encoder_folder / join_name([
-            # create name by joining all of the following elements with a dot (remove empty strings / None)
+            # create name by joining all of the following elements (remove empty strings / None)
             "sequential",
-            f"emb{self._embedding_size}" if not self._pretrained_embeddings_file else "pretrained_embeddings_{}".format(
+            f"emb{self._embedding_size}" if not self._pretrained_embeddings_file else "pretrained-embeddings-{}".format(
                 hashlib.md5(open(str(self._pretrained_embeddings_file), "rb").read()).hexdigest()),
             f"retrained" if self._pretrained_embeddings_file and self._retrain_embedding_matrix else None,
-            "embed_reserved" if self._pretrained_embeddings_file and self._embed_reserved else None,
-            "layers_{}".format("_".join(layer.replace(".", "_") for layer in self._layer_definitions)),
+            "embed-reserved" if self._pretrained_embeddings_file and self._embed_reserved else None,
+            "layers-{}".format("-".join(self._layer_definitions)),
+        ])
+
+    @property
+    def _experiment_folder(self) -> Path:
+        # name sub-folder
+        return self._model_folder / join_name([
+            # create name by joining all of the following elements (remove empty strings / None)
+            "experiment",
             f"epochs{self._num_epochs}",
             f"batch{self._batch_size}",
             f"lr{self._learning_rate}",
-            f"decay{self._learning_decay}",
+            f"decay{self._learning_decay}" if self._learning_decay else None,
             None if self._shuffle_training_data is False else "shuffle" if self._shuffle_training_data is True
             else f"shuffle{self._shuffle_training_data}",
-            f"validation_split{self._validation_split}" if self._validation_split else None,
+            f"validation-split{self._validation_split}" if self._validation_split else None,
         ])
 
-    def _train_or_load_model_and_encoders(self, training_data: List[Tuple[str, int]]) -> Tuple[Model,
+    def _train_or_load_model_and_encoders(self, training_data: List[Tuple[str, int]]) -> Tuple[Sequential,
                                                                                                AbstractTokenEncoder,
                                                                                                LabelEncoder]:
         # prepare encoder and encode training data
@@ -169,11 +179,31 @@ class ImdbClassifier:
         self._train_or_load_model(x_train, y_train)
         return self._model, self._text_enc, self._label_enc
 
-    def _train_or_load_model(self, x_train: np.ndarray, y_train: np.ndarray) -> Model:
-        model_file = self._model_folder / "keras_model.hd5"
+    def _plot_training_stats(self, history: History):
+        # plot accuracy
+        y_series = {"Training acc": history.history["acc"], }
+        if "val_acc" in history.history:
+            y_series["Validation acc"] = history.history["val_acc"]
+        plot2file(
+            file=self._experiment_folder / "accuracy.png",
+            x_values=list(range(self._num_epochs)), y_series=y_series,
+            title="Training and validation accuracy", x_label="Epochs", y_label="Accuracy",
+        )
+        # plot loss
+        y_series = {"Training loss": history.history['loss'], }
+        if "val_loss" in history.history:
+            y_series["Validation loss"] = history.history["val_loss"]
+        plot2file(
+            file=self._experiment_folder / "loss.png",
+            x_values=list(range(self._num_epochs)), y_series=y_series,
+            title="Training and validation loss", x_label="Epochs", y_label="Loss",
+        )
+
+    def _train_or_load_model(self, x_train: np.ndarray, y_train: np.ndarray) -> Sequential:
+        model_file = self._experiment_folder / "keras-model.hd5"
         if model_file.exists():
             logging.info(f"Loading models from: {model_file}")
-            self._model: Model = load_model(str(model_file))
+            self._model: Sequential = load_model(str(model_file))
         else:
             # this model is inspired by the configuration of Susan Li:
             # https://towardsdatascience.com/a-beginners-guide-on-sentiment-analysis-with-rnn-9e100627c02e
@@ -188,7 +218,7 @@ class ImdbClassifier:
                 embedding_matcher.reload_embeddings(token_encoder=self._text_enc, show_progress=True)
 
             # train the model
-            self._model, history = train_lstm_classifier(
+            self._model: Sequential = train_lstm_classifier(
                 x=x_train, y=y_train,
                 vocabulary_size=self._text_enc.vocabulary_size,
                 embedding_size=self._embedding_size,
@@ -199,28 +229,14 @@ class ImdbClassifier:
                 lr=self._learning_rate, decay=self._learning_decay,
                 shuffle_data=self._shuffle_training_data, validation_split=self._validation_split,
             )
-            # plot accuracy
-            y_series = {"Training acc": history.history["acc"], }
-            if "val_acc" in history.history:
-                y_series["Validation acc"] = history.history["val_acc"]
-            plot2file(
-                file=self._model_folder / "accuracy.png",
-                x_values=list(range(self._num_epochs)), y_series=y_series,
-                title="Training and validation accuracy",x_label="Epochs", y_label="Accuracy",
-            )
-            # plot loss
-            y_series = {"Training loss": history.history['loss'], }
-            if "val_loss" in history.history:
-                y_series["Validation loss"] = history.history["val_loss"]
-            plot2file(
-                file=self._model_folder / "loss.png",
-                x_values=list(range(self._num_epochs)), y_series=y_series,
-                title="Training and validation loss", x_label="Epochs", y_label="Loss",
-            )
-            del embedding_matcher, history
+
+            self._plot_training_stats(self._model.history)
+            del embedding_matcher
             gc.collect()
-            # serialize data for next time
-            save_model(self._model, filepath=str(model_file))
+
+            if self._num_epochs <= len(self._model.history.history['loss']):
+                # if the training finished: serialize data for next time
+                save_model(self._model, filepath=str(model_file))
 
         self._model.summary()
 
@@ -249,7 +265,7 @@ class ImdbClassifier:
         logging.info("\n{}".format(classification_report(y_true=y_test, y_pred=y_predicted, target_names=["neg", "pos"],)))
         import json
         write_text_file(
-            file_path=self._model_folder / "test.json",
+            file_path=self._experiment_folder / "test.json",
             text=json.dumps(classification_report(y_true=y_test,
                                                   y_pred=y_predicted,
                                                   target_names=["neg", "pos"],

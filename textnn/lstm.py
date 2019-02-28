@@ -1,8 +1,8 @@
+import logging
 from typing import Any, List, Union, Tuple
 
 import numpy as np
 from keras import Sequential
-from keras.callbacks import History
 from keras.engine.base_layer import Layer
 from keras.layers import Embedding, Dense
 from keras.optimizers import Adam
@@ -15,7 +15,6 @@ def setup_sequential(y: Union[np.ndarray, int],
                      ) -> Tuple[Sequential, Any]:
     """
     Train a LSTM model for text classification tasks
-    :param x: training data
     :param y: training labels or the number of training labels
     :param vocabulary_size: size of the input vocabulary
     :param vocabulary_size: size of the input vocabulary
@@ -61,7 +60,7 @@ def train_lstm_classifier(x: np.ndarray, y: np.ndarray, vocabulary_size,
                           shuffle_data: Union[int, bool] = False, validation_split: float = 0.,
                           validation_data: Union[Tuple[np.ndarray, np.ndarray],
                                                  Tuple[np.ndarray, np.ndarray, Any]] = None,
-                          ) -> Tuple[Sequential, History]:
+                          **kwargs) -> Sequential:
     """
     Train a LSTM model for text classification tasks
     :param x: training data
@@ -72,6 +71,8 @@ def train_lstm_classifier(x: np.ndarray, y: np.ndarray, vocabulary_size,
     :param retrain_matrix: continue training the pre-trained embedding matrix (in case `embedding_matrix` is specified)
     :param additional_layers: additional layer definitions downstream the embeddings
     :param batch_size: Number of samples per gradient update
+    :param lr: Learning rate
+    :param decay: Learning decay
     :param num_epochs: Number of epochs to train the model. An epoch is an iteration over the entire `x` and `y` data
     provided.
     :param shuffle_data: shuffle the training to avoid problems in input order (e.g., if data is sorted by label).
@@ -91,7 +92,8 @@ def train_lstm_classifier(x: np.ndarray, y: np.ndarray, vocabulary_size,
     # create a sequential model
     model, loss = setup_sequential(y=y,
                                    vocabulary_size=vocabulary_size,
-                                   embedding_size=embedding_size, embedding_matrix=embedding_matrix, retrain_matrix=retrain_matrix,
+                                   embedding_size=embedding_size, embedding_matrix=embedding_matrix,
+                                   retrain_matrix=retrain_matrix,
                                    additional_layers=additional_layers,
                                    )
     model.compile(loss=loss,
@@ -106,10 +108,14 @@ def train_lstm_classifier(x: np.ndarray, y: np.ndarray, vocabulary_size,
         np.random.shuffle(indices)
         x = x[indices]
         y = y[indices]
+    try:
+        # start the training (fit the model to the data)
+        model.fit(x=x, y=y,
+                  shuffle=False, validation_split=validation_split, validation_data=validation_data,
+                  batch_size=batch_size, epochs=num_epochs, **kwargs)
+    except KeyboardInterrupt:
+        print()
+        logging.warning(f"KeyboardInterrupt: Interrupting model fit ...")
 
-    # start the training (fit the model to the data)
-    history = model.fit(x=x, y=y,
-                        shuffle=False, validation_split=validation_split, validation_data=validation_data,
-                        batch_size=batch_size, epochs=num_epochs)
+    return model
 
-    return model, history
