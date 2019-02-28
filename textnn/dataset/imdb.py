@@ -217,6 +217,9 @@ class ImdbClassifier:
                 # match embeddings with text/token encoder
                 embedding_matcher.reload_embeddings(token_encoder=self._text_enc, show_progress=True)
 
+            if not self._experiment_folder.exists():
+                self._experiment_folder.mkdir(parents=True, exist_ok=True)
+            csv_log = self._experiment_folder / "epoch_results.csv"
             # train the model
             self._model: Sequential = train_lstm_classifier(
                 x=x_train, y=y_train,
@@ -228,6 +231,7 @@ class ImdbClassifier:
                 num_epochs=self._num_epochs, batch_size=self._batch_size,
                 lr=self._learning_rate, decay=self._learning_decay,
                 shuffle_data=self._shuffle_training_data, validation_split=self._validation_split,
+                callbacks=[CSVLogger(str(csv_log), append=True, separator=';')]
             )
 
             self._plot_training_stats(self._model.history)
