@@ -189,6 +189,33 @@ class ImdbClassifier:
             x_values=list(range(self._num_epochs)), y_series=y_series,
             title="Training and validation accuracy", x_label="Epochs", y_label="Accuracy",
         )
+        # plot MSE
+        y_series = {"Training MSE": history.history["mse"], }
+        if "val_mse" in history.history:
+            y_series["Validation MSE"] = history.history["val_mse"]
+        plot2file(
+            file=self._experiment_folder / "mse.png",
+            x_values=list(range(self._num_epochs)), y_series=y_series,
+            title="Training and validation Mean Squared Error", x_label="Epochs", y_label="MSE",
+        )
+        # plot msle
+        y_series = {"Training MSLE": history.history["msle"], }
+        if "val_mse" in history.history:
+            y_series["Validation MSLE"] = history.history["val_msle"]
+        plot2file(
+            file=self._experiment_folder / "msle.png",
+            x_values=list(range(self._num_epochs)), y_series=y_series,
+            title="Training and validation Mean Squared Logarithmic Error", x_label="Epochs", y_label="MSLE",
+        )
+        # plot KL Divergence
+        y_series = {"Training KL Divergence": history.history["kld"], }
+        if "val_mse" in history.history:
+            y_series["Validation Kullback Leibler Divergence"] = history.history["val_kld"]
+        plot2file(
+            file=self._experiment_folder / "kld.png",
+            x_values=list(range(self._num_epochs)), y_series=y_series,
+            title="Training and validation KL Divergence", x_label="Epochs", y_label="KL Divergence",
+        )
         # plot loss
         y_series = {"Training loss": history.history['loss'], }
         if "val_loss" in history.history:

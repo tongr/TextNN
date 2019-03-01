@@ -98,7 +98,8 @@ def train_lstm_classifier(x: np.ndarray, y: np.ndarray, vocabulary_size,
                                    )
     model.compile(loss=loss,
                   optimizer=Adam(lr=lr, decay=decay),
-                  metrics=['accuracy'])
+                  metrics=['accuracy', 'mse', 'msle', 'kld'],
+                  )
 
     if shuffle_data is not False:
         if shuffle_data is not True:
