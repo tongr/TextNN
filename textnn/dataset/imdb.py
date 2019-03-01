@@ -5,10 +5,11 @@ from pathlib import PurePath, Path
 from typing import List, Tuple, Union, Iterable, Any
 
 from keras import Sequential
+from keras.callbacks import History, CSVLogger
 from keras.layers import *
 from keras.models import save_model, load_model
-from keras.callbacks import History, CSVLogger
-from textnn.lstm import train_lstm_classifier
+from keras.optimizers import Adam
+
 from textnn.utils import plot2file, join_name, read_text_file, write_text_file
 from textnn.utils.encoding import prepare_encoders, LabelEncoder, AbstractTokenEncoder
 from textnn.utils.encoding.text import TokenSequenceEncoder, VectorFileEmbeddingMatcher
@@ -60,6 +61,35 @@ class ImdbClassifier:
                  shuffle_training_data: Union[int, bool] = 113, validation_split: float = .05,
                  log_config: bool = True,
                  ):
+        """
+
+        :param data_folder:
+        :param vocabulary_size: size of the input vocabulary
+        :param max_text_length:
+        :param embedding_size: size of the embedding layer (is ignored in case `embedding_matrix` is set)
+        :param pretrained_embeddings_file:
+        :param embed_reserved:
+        :param retrain_embedding_matrix: continue training the pre-trained embedding matrix (in case `embedding_matrix`
+        is specified)
+        :param layer_definitions: additional layer definitions downstream the embeddings
+        :param batch_size: Number of samples per gradient update
+        :param learning_rate: Learning rate
+        :param learning_decay: Learning decay
+        :param num_epochs: Number of epochs to train the model. An epoch is an iteration over the entire `x` and `y`
+        data provided.
+        :param shuffle_training_data: shuffle the training to avoid problems in input order (e.g., if data is sorted by
+        label). If `shuffle_data=False`, the data will not be shuffled, if `shuffle_data=True`, the data will be
+        shuffled randomly, if `shuffle_data` is an integer, this value will be used as seed for the random function.
+        :param validation_split: Float between 0 and 1. Fraction of the training data to be used as validation data. The
+        model will set apart this fraction of the training data, will not train on it, and will evaluate the loss and
+        any model metrics on this data at the end of each epoch. The validation data is selected from the last samples
+        in the `x` and `y` data provided, before shuffling.
+        :param validation_split: Float between 0 and 1. Fraction of the training data to be used as validation data. The
+        model will set apart this fraction of the training data, will not train on it, and will evaluate the loss and
+        any model metrics on this data at the end of each epoch. The validation data is selected from the last samples
+        in the `x` and `y` data provided, before shuffling.
+        :param log_config: if True a the config of this isntance is printed after setup
+        """
         self._data_folder: Path = data_folder if isinstance(data_folder, PurePath) else Path(data_folder)
         self._vocabulary_size = vocabulary_size
         self._max_text_length = max_text_length
@@ -190,27 +220,18 @@ class ImdbClassifier:
             title="Training and validation accuracy", x_label="Epochs", y_label="Accuracy",
         )
         # plot MSE
-        y_series = {"Training MSE": history.history["mse"], }
-        if "val_mse" in history.history:
-            y_series["Validation MSE"] = history.history["val_mse"]
+        y_series = {"Training MSE": history.history["mean_squared_error"], }
+        if "val_mean_squared_error" in history.history:
+            y_series["Validation MSE"] = history.history["val_mean_squared_error"]
         plot2file(
             file=self._experiment_folder / "mse.png",
             x_values=list(range(self._num_epochs)), y_series=y_series,
             title="Training and validation Mean Squared Error", x_label="Epochs", y_label="MSE",
         )
-        # plot msle
-        y_series = {"Training MSLE": history.history["msle"], }
-        if "val_mse" in history.history:
-            y_series["Validation MSLE"] = history.history["val_msle"]
-        plot2file(
-            file=self._experiment_folder / "msle.png",
-            x_values=list(range(self._num_epochs)), y_series=y_series,
-            title="Training and validation Mean Squared Logarithmic Error", x_label="Epochs", y_label="MSLE",
-        )
         # plot KL Divergence
-        y_series = {"Training KL Divergence": history.history["kld"], }
-        if "val_mse" in history.history:
-            y_series["Validation Kullback Leibler Divergence"] = history.history["val_kld"]
+        y_series = {"Training KL Divergence": history.history["kullback_leibler_divergence"], }
+        if "val_kullback_leibler_divergence" in history.history:
+            y_series["Validation Kullback Leibler Divergence"] = history.history["val_kullback_leibler_divergence"]
         plot2file(
             file=self._experiment_folder / "kld.png",
             x_values=list(range(self._num_epochs)), y_series=y_series,
@@ -248,16 +269,9 @@ class ImdbClassifier:
                 self._experiment_folder.mkdir(parents=True, exist_ok=True)
             csv_log = self._experiment_folder / "epoch_results.csv"
             # train the model
-            self._model: Sequential = train_lstm_classifier(
+            self._model: Sequential = self._train_model(
                 x=x_train, y=y_train,
-                vocabulary_size=self._text_enc.vocabulary_size,
-                embedding_size=self._embedding_size,
                 embedding_matrix=embedding_matcher.embedding_matrix if embedding_matcher else None,
-                retrain_matrix=self._retrain_embedding_matrix,
-                additional_layers=self._layers,
-                num_epochs=self._num_epochs, batch_size=self._batch_size,
-                lr=self._learning_rate, decay=self._learning_decay,
-                shuffle_data=self._shuffle_training_data, validation_split=self._validation_split,
                 callbacks=[CSVLogger(str(csv_log), append=True, separator=';')]
             )
 
@@ -293,7 +307,10 @@ class ImdbClassifier:
         logging.info("{}".format(accuracy_score(y_true=y_test, y_pred=y_predicted)))
 
         from sklearn.metrics.classification import classification_report
-        logging.info("\n{}".format(classification_report(y_true=y_test, y_pred=y_predicted, target_names=["neg", "pos"],)))
+        logging.info("\n{}".format(classification_report(y_true=y_test,
+                                                         y_pred=y_predicted,
+                                                         target_names=["neg", "pos"],
+                                                         )))
         import json
         write_text_file(
             file_path=self._experiment_folder / "test.json",
@@ -333,3 +350,87 @@ class ImdbClassifier:
         # debug the text encoder
         logging.info(f"Trying to encode the following texts: {texts}")
         self._text_enc.print_representations(texts)
+
+    def _setup_model(self,
+                     y: Union[np.ndarray, int],
+                     embedding_matrix: np.ndarray = None,
+                     ) -> Tuple[Sequential, Any]:
+        """
+        Prepare a `Sequential` model for text classification tasks
+        :param y: training labels or the number of training labels
+        :param embedding_matrix: pre-trained embedding matrix to use instead of training new embedding layer
+        :return: the untrained model and the loss function
+        """
+        # create a sequential model
+        model = Sequential()
+
+        # first layer: embedding
+        if embedding_matrix is not None:
+            model.add(Embedding(input_dim=self._vocabulary_size, output_dim=embedding_matrix.shape[1],
+                                weights=[embedding_matrix], trainable=self._retrain_embedding_matrix))
+        else:
+            model.add(Embedding(input_dim=self._vocabulary_size, output_dim=self._embedding_size))
+
+        # further layers ...
+        if self._layers:
+            for layer in self._layers:
+                model.add(layer)
+
+        # final layer: provides class/label output
+        num_categories: int = y.shape[1] if not isinstance(y, int) else y
+        if num_categories > 1:
+            model.add(Dense(num_categories, activation='softmax'))
+            loss = 'categorical_crossentropy'
+        else:
+            model.add(Dense(1, activation='sigmoid'))
+            loss = 'binary_crossentropy'
+
+        model.summary()
+
+        return model, loss
+
+    def _train_model(self,
+                     x: np.ndarray, y: np.ndarray,
+                     embedding_matrix: np.ndarray = None,
+                     validation_data: Union[Tuple[np.ndarray, np.ndarray],
+                                            Tuple[np.ndarray, np.ndarray, Any]] = None,
+                     **kwargs) -> Sequential:
+        """
+        Train a `Sequential` model for text classification tasks
+        :param x: training data
+        :param y: training labels
+        :param embedding_matrix: pre-trained embedding matrix to use instead of training new embedding layer
+        :param validation_data: tuple `(x_val, y_val)` or tuple `(x_val, y_val, val_sample_weights)` on which to
+        evaluate the loss and any model metrics at the end of each epoch. The model will not be trained on this data.
+        `validation_data` will override `validation_split`.
+        :return: the trained (fitted) model
+        """
+        assert len(x) == len(y), "The x and y data matrices need to contain the same number of instances!"
+
+        # create a sequential model
+        model, loss = self._setup_model(y=y, embedding_matrix=embedding_matrix)
+        model.compile(loss=loss,
+                      optimizer=Adam(lr=self._learning_rate, decay=self._learning_decay),
+                      metrics=['accuracy', 'mean_squared_error', 'kullback_leibler_divergence'],
+                      )
+
+        if self._shuffle_training_data is not False:
+            if self._shuffle_training_data is not True:
+                # assume `shuffle_training_data` contains the random seed
+                np.random.seed(self._shuffle_training_data)
+            indices = np.arange(len(x))
+            np.random.shuffle(indices)
+            x = x[indices]
+            y = y[indices]
+        try:
+            # start the training (fit the model to the data)
+            model.fit(x=x, y=y,
+                      shuffle=False, validation_split=self._validation_split, validation_data=validation_data,
+                      batch_size=self._batch_size, epochs=self._num_epochs, **kwargs)
+        except KeyboardInterrupt:
+            print()
+            logging.warning(f"KeyboardInterrupt: Interrupting model fit ...")
+
+        return model
+
+
