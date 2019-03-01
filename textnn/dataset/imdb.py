@@ -125,7 +125,7 @@ class ImdbClassifier:
             layer_definitions = layer_definitions.split(sep)
 
         import re
-        p = re.compile("^({})\([^(]*\)$".format("|".join(layer_class_names(["keras.layers"]))))
+        p = re.compile("^({})\(.*\)$".format("|".join(layer_class_names(["keras.layers"]))))
         layers = []
         for position, layer_def in enumerate(layer_definitions):
             m = p.fullmatch(layer_def)
