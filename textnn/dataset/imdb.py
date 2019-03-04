@@ -119,7 +119,7 @@ class ImdbClassifier:
     #
     # public methods
     #
-    def train_and_evaluate(self):
+    def train_and_test(self):
         # get training data
         training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
         # prepare the model
@@ -131,7 +131,7 @@ class ImdbClassifier:
         # extract test data
         test_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=False))
         # evaluate the performance of the model
-        self._evaluate_model(test_data)
+        self._test_model(test_data)
 
         del test_data
         gc.collect()
@@ -154,6 +154,57 @@ class ImdbClassifier:
     @property
     def config(self) -> str:
         return "\n".join(f"  {key}: {value}" for key, value in sorted(self._config_parameters))
+
+    def cross_validation(self, k: int = 10):
+        # get training data
+        data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
+
+        # prepare encoder and encode training data
+        self._text_enc, self._label_enc = self._prepare_or_load_encoders(
+            training_data=data,
+            initialized_text_enc=TokenSequenceEncoder(
+                limit_vocabulary=self._vocabulary_size,
+                default_length=self._max_text_length),
+        )
+
+        # extract data vectors (from training data)
+        text_list = list(tex for tex, lab in data)
+        x: np.ndarray = self._text_enc.encode(texts=text_list)
+
+        # cleanup memory
+        del text_list
+        gc.collect()
+
+        # prepare training labels
+        y_class_labels: np.ndarray = self._label_enc.integer_class_labels(labeled_data=data)
+        y = self._label_enc.make_categorical(y_labels=y_class_labels)
+
+        from copy import copy
+        from sklearn.model_selection import StratifiedKFold
+        # define 10-fold cross validation test harness
+        k_fold = StratifiedKFold(
+            n_splits=k,
+            shuffle=self._shuffle_training_data is not False,
+            random_state=self._shuffle_training_data if isinstance(self._shuffle_training_data, int) else None
+        )
+
+        results = []
+        for fold_idx, (train_instances, test_instances) in enumerate(k_fold.split(x, y_class_labels)):
+            logging.info(f"Validating fold {fold_idx+1} of {k}")
+            fold_config = copy(self)
+            fold_config._experiment_folder = self._experiment_folder / f"fold_{fold_idx}"
+            fold_config._shuffle_training_data = False
+            # split training and validation data and train model
+            fold_config._model = fold_config._train_model(x[train_instances], y[train_instances],
+                                                          validation_data=(x[test_instances], y[test_instances]))
+
+            results.append(fold_config._validate_model(x=x[test_instances], y=y[test_instances]))
+        # TODO collect results and build statistics
+        logging.info("results:")
+        logging.info("\n".join(str(result) for result in results))
+
+        del data
+        gc.collect()
 
     #
     # config accessors
@@ -220,6 +271,8 @@ class ImdbClassifier:
 
     @property
     def _experiment_folder(self) -> Path:
+        if "__experiment_folder" in self.__dict__:
+            return self.__dict__["__experiment_folder"]
         # name sub-folder
         return self._model_folder / join_name([
             # create name by joining all of the following elements (remove empty strings / None)
@@ -232,6 +285,10 @@ class ImdbClassifier:
             else f"shuffle{self._shuffle_training_data}",
             f"validation-split{self._validation_split}" if self._validation_split else None,
         ])
+
+    @_experiment_folder.setter
+    def _experiment_folder(self, value):
+        self.__dict__["__experiment_folder"] = value
 
     #
     # preparation
@@ -256,8 +313,8 @@ class ImdbClassifier:
             with open(str(label_encoder_file), "rb") as pickle_file:
                 label_enc: LabelEncoder = pickle.load(pickle_file)
 
-        text_list = list(tex for tex, lab in training_data)
         if not text_enc or not label_enc:
+            text_list = list(tex for tex, lab in training_data)
             # extract vocab (from training data)
             text_enc = initialized_text_enc
             text_enc.prepare(texts=text_list, show_progress=True)
@@ -273,9 +330,9 @@ class ImdbClassifier:
             with open(str(label_encoder_file), 'wb') as pickle_file:
                 pickle.dump(label_enc, pickle_file)
 
-        # cleanup memory
-        del text_list
-        gc.collect()
+            # cleanup memory
+            del text_list
+            gc.collect()
 
         return text_enc, label_enc
 
@@ -305,7 +362,7 @@ class ImdbClassifier:
         y_train: np.ndarray = self._label_enc.make_categorical(labeled_data=training_data)
 
         # load or train model
-        self._train_or_load_model(x_train, y_train)
+        self._model = self._train_or_load_model(x_train, y_train)
         return self._model, self._text_enc, self._label_enc
 
     def _plot_training_stats(self, history: History):
@@ -346,58 +403,55 @@ class ImdbClassifier:
             title="Training and validation loss", x_label="Epochs", y_label="Loss",
         )
 
-    # noinspection PyUnresolvedReferences
     def _train_or_load_model(self, x_train: np.ndarray, y_train: np.ndarray) -> Sequential:
+        """
+        Train a or load a `Sequential` model for text classification tasks
+        :param x_train: training data
+        :param y_train: training labels
+        :param validation_data: tuple `(x_val, y_val)` or tuple `(x_val, y_val, val_sample_weights)` on which to
+        evaluate the loss and any model metrics at the end of each epoch. The model will not be trained on this data.
+        `validation_data` will override `validation_split`.
+        :return: the trained (fitted) model
+        """
+        assert len(x_train) == len(y_train), "The x and y data matrices need to contain the same number of instances!"
         model_file = self._experiment_folder / "keras-model.hd5"
+
+        model: Sequential = None
         if model_file.exists():
             logging.info(f"Loading models from: {model_file}")
-            self._model: Sequential = load_model(str(model_file))
-        else:
-            # this model is inspired by the configuration of Susan Li:
-            # https://towardsdatascience.com/a-beginners-guide-on-sentiment-analysis-with-rnn-9e100627c02e
+            model: Sequential = load_model(str(model_file))
 
-            # load encoders and encode training data
-            embedding_matcher = None
-            if self._pretrained_embeddings_file and self._pretrained_embeddings_file.exists():
-                embedding_matcher = VectorFileEmbeddingMatcher(fasttext_vector_file=self._pretrained_embeddings_file,
-                                                               encode_reserved_words=self._embed_reserved,
-                                                               )
-                # match embeddings with text/token encoder
-                embedding_matcher.reload_embeddings(token_encoder=self._text_enc, show_progress=True)
+        if not model:
+            if self._shuffle_training_data is not False:
+                if self._shuffle_training_data is not True:
+                    # assume `shuffle_training_data` contains the random seed
+                    np.random.seed(self._shuffle_training_data)
+                indices = np.arange(len(x_train))
+                np.random.shuffle(indices)
+                x_train = x_train[indices]
+                y_train = y_train[indices]
 
-            if not self._experiment_folder.exists():
-                self._experiment_folder.mkdir(parents=True, exist_ok=True)
-            csv_log = self._experiment_folder / "epoch_results.csv"
             # train the model
-            self._model: Sequential = self._train_model(
-                x=x_train, y=y_train,
-                embedding_matrix=embedding_matcher.embedding_matrix if embedding_matcher else None,
-                callbacks=[CSVLogger(str(csv_log), append=True, separator=';')]
-            )
+            model: Sequential = self._train_model(x=x_train, y=y_train)
 
-            self._plot_training_stats(self._model.history)
-            del embedding_matcher
-            gc.collect()
-
-            if self._num_epochs <= len(self._model.history.history['loss']):
+            # noinspection PyUnresolvedReferences
+            if self._num_epochs <= len(model.history.history['loss']):
                 # if the training finished: serialize data for next time
-                save_model(self._model, filepath=str(model_file))
+                save_model(model, filepath=str(model_file))
 
-        self._model.summary()
+        model.summary()
 
-        return self._model
+        return model
 
     def _train_model(self,
                      x: np.ndarray, y: np.ndarray,
-                     embedding_matrix: np.ndarray = None,
                      validation_data: Union[Tuple[np.ndarray, np.ndarray],
                                             Tuple[np.ndarray, np.ndarray, Any]] = None,
-                     **kwargs) -> Sequential:
+                     ) -> Sequential:
         """
         Train a `Sequential` model for text classification tasks
         :param x: training data
         :param y: training labels
-        :param embedding_matrix: pre-trained embedding matrix to use instead of training new embedding layer
         :param validation_data: tuple `(x_val, y_val)` or tuple `(x_val, y_val, val_sample_weights)` on which to
         evaluate the loss and any model metrics at the end of each epoch. The model will not be trained on this data.
         `validation_data` will override `validation_split`.
@@ -406,48 +460,56 @@ class ImdbClassifier:
         assert len(x) == len(y), "The x and y data matrices need to contain the same number of instances!"
 
         # create a sequential model
-        model, loss = self._setup_model(y=y, embedding_matrix=embedding_matrix)
+        model, loss = self._setup_model(y=y)
         model.compile(loss=loss,
                       optimizer=Adam(lr=self._learning_rate, decay=self._learning_decay),
                       metrics=['accuracy', 'mean_squared_error', 'kullback_leibler_divergence'],
                       )
 
-        if self._shuffle_training_data is not False:
-            if self._shuffle_training_data is not True:
-                # assume `shuffle_training_data` contains the random seed
-                np.random.seed(self._shuffle_training_data)
-            indices = np.arange(len(x))
-            np.random.shuffle(indices)
-            x = x[indices]
-            y = y[indices]
         try:
+            if not self._experiment_folder.exists():
+                self._experiment_folder.mkdir(parents=True, exist_ok=True)
+            csv_log = self._experiment_folder / "epoch_results.csv"
+
             # start the training (fit the model to the data)
             model.fit(x=x, y=y,
                       shuffle=False, validation_split=self._validation_split, validation_data=validation_data,
-                      batch_size=self._batch_size, epochs=self._num_epochs, **kwargs)
+                      batch_size=self._batch_size, epochs=self._num_epochs,
+                      callbacks=[CSVLogger(str(csv_log), append=True, separator=';')])
         except KeyboardInterrupt:
             print()
             logging.warning(f"KeyboardInterrupt: Interrupting model fit ...")
+
+        # noinspection PyUnresolvedReferences
+        self._plot_training_stats(model.history)
+        gc.collect()
 
         return model
 
     def _setup_model(self,
                      y: Union[np.ndarray, int],
-                     embedding_matrix: np.ndarray = None,
                      ) -> Tuple[Sequential, Any]:
         """
         Prepare a `Sequential` model for text classification tasks
         :param y: training labels or the number of training labels
-        :param embedding_matrix: pre-trained embedding matrix to use instead of training new embedding layer
         :return: the untrained model and the loss function
         """
         # create a sequential model
         model = Sequential()
 
+        # load encoders and encode training data
+        embedding_matcher = None
+        if self._pretrained_embeddings_file and self._pretrained_embeddings_file.exists():
+            embedding_matcher = VectorFileEmbeddingMatcher(fasttext_vector_file=self._pretrained_embeddings_file,
+                                                           encode_reserved_words=self._embed_reserved,
+                                                           )
+            # match embeddings with text/token encoder
+            embedding_matcher.reload_embeddings(token_encoder=self._text_enc, show_progress=True)
+
         # first layer: embedding
-        if embedding_matrix is not None:
-            model.add(Embedding(input_dim=self._vocabulary_size, output_dim=embedding_matrix.shape[1],
-                                weights=[embedding_matrix], trainable=self._retrain_embedding_matrix))
+        if embedding_matcher is not None:
+            model.add(Embedding(input_dim=self._vocabulary_size, output_dim=embedding_matcher.embedding_matrix.shape[1],
+                                weights=[embedding_matcher.embedding_matrix], trainable=self._retrain_embedding_matrix))
         else:
             model.add(Embedding(input_dim=self._vocabulary_size, output_dim=self._embedding_size))
 
@@ -472,7 +534,7 @@ class ImdbClassifier:
     #
     # evaluation
     #
-    def _evaluate_model(self, test_data: List[Tuple[str, int]]):
+    def _test_model(self, test_data: List[Tuple[str, int]]):
         # extract data vectors (from test data)
         x_test: np.ndarray = self._text_enc.encode(texts=list(text for text, lab in test_data))
 
@@ -480,26 +542,35 @@ class ImdbClassifier:
         y_test_categories: np.ndarray = self._label_enc.make_categorical(labeled_data=test_data)
         gc.collect()
 
+        self._validate_model(x=x_test, y=y_test_categories, validation_file_name="text.json")
+
+    def _validate_model(self, x: np.ndarray, y: np.ndarray, validation_file_name: str = "validation.json"):
         logging.info("Creating predictions ...")
-        y_predicted_categories = self._model.predict(x_test, batch_size=self._batch_size)
+        y_predicted_categories = self._model.predict(x, batch_size=self._batch_size)
         gc.collect()
 
         from sklearn.metrics.classification import accuracy_score, precision_recall_fscore_support
-        y_test = self._label_enc.max_category(y_test_categories)
-        y_predicted = self._label_enc.max_category(y_predicted_categories)
+        y_expected_1dim = self._label_enc.max_category(y)
+        y_predicted_1dim = self._label_enc.max_category(y_predicted_categories)
         logging.info("Results:")
-        logging.info("{}".format(precision_recall_fscore_support(y_true=y_test, y_pred=y_predicted)))
-        logging.info("{}".format(accuracy_score(y_true=y_test, y_pred=y_predicted)))
+        logging.info("{}".format(precision_recall_fscore_support(y_true=y_expected_1dim, y_pred=y_predicted_1dim)))
+        accuracy = accuracy_score(y_true=y_expected_1dim, y_pred=y_predicted_1dim)
+        logging.info("{}".format(accuracy))
 
         from sklearn.metrics.classification import classification_report
-        logging.info("\n{}".format(classification_report(y_true=y_test,
-                                                         y_pred=y_predicted,
+        logging.info("\n{}".format(classification_report(y_true=y_expected_1dim,
+                                                         y_pred=y_predicted_1dim,
                                                          target_names=["neg", "pos"],
                                                          )))
+
+        results = classification_report(y_true=y_expected_1dim,
+                                        y_pred=y_predicted_1dim,
+                                        target_names=["neg", "pos"],
+                                        output_dict=True)
+        results["accuracy"] = accuracy
         import json
         write_text_file(
-            file_path=self._experiment_folder / "test.json",
-            text=json.dumps(classification_report(y_true=y_test,
-                                                  y_pred=y_predicted,
-                                                  target_names=["neg", "pos"],
-                                                  output_dict=True)))
+            file_path=self._experiment_folder / validation_file_name,
+            text=json.dumps(results))
+
+        return results

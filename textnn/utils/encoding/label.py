@@ -19,6 +19,15 @@ class LabelEncoder:
 
         self.num_classes = num_classes
 
+    @staticmethod
+    def integer_class_labels(labeled_data: Iterable[Tuple[object, int]] = None) -> np.ndarray:
+        """
+        Transforms labled data into integer class labels.
+        :param labeled_data: iterable of labeled data (used in case `y_labels` is None)
+        :return: an array of class labels
+        """
+        return np.array(list(lab for text, lab in labeled_data))
+
     def make_categorical(self, y_labels: Union[np.ndarray, List[int]] = None,
                          labeled_data: Iterable[Tuple[object, int]] = None) -> np.ndarray:
         """

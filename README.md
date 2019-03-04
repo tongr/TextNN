@@ -49,7 +49,7 @@ The ACL IMDb dataset consists of 25,000 highly polar movie reviews for training,
 
 To run training and evaluation of a LSTM model to predict positive/negative reviews run:
 ```bash
-python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] train-and-evaluate
+python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] train-and-test
 ```
 where `[IMDB_DATA_FOLDER]` refers to the base folder of the ACL IMDb dataset. Further optional arguments will influence
 the following areas:
@@ -69,6 +69,13 @@ python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] test-encoding "This 
     "This sentence contains the unknown word klncusuvhacccuuandjccbeddusskxhduscj"
 ```
 Aforementioned optional arguments still apply.
+
+
+To execute *k*-fold cross validation based only on the training data set
+```bash
+python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] cross-validation [--log-config NUMBER_OF_FOLDS]
+```
+
 
 ### Pretrained word embeddings
 Pretrained word embeddings can be used by loading provided vec files. For instance,
