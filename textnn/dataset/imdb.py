@@ -1,6 +1,7 @@
 import gc
 import hashlib
 import logging
+import pickle
 from pathlib import PurePath, Path
 from typing import List, Tuple, Union, Iterable, Any
 
@@ -11,8 +12,8 @@ from keras.models import save_model, load_model
 from keras.optimizers import Adam
 
 from textnn.utils import plot2file, join_name, read_text_file, write_text_file
-from textnn.utils.encoding import prepare_encoders, LabelEncoder, AbstractTokenEncoder
-from textnn.utils.encoding.text import TokenSequenceEncoder, VectorFileEmbeddingMatcher
+from textnn.utils.encoding.label import LabelEncoder
+from textnn.utils.encoding.text import AbstractTokenEncoder, TokenSequenceEncoder, VectorFileEmbeddingMatcher
 
 
 #
@@ -155,7 +156,7 @@ class ImdbClassifier:
             layer_definitions = layer_definitions.split(sep)
 
         import re
-        p = re.compile("^({})\(.*\)$".format("|".join(layer_class_names(["keras.layers"]))))
+        p = re.compile("^({})\\(.*\\)$".format("|".join(layer_class_names(["keras.layers"]))))
         layers = []
         for position, layer_def in enumerate(layer_definitions):
             m = p.fullmatch(layer_def)
@@ -198,16 +199,69 @@ class ImdbClassifier:
                                                                                                AbstractTokenEncoder,
                                                                                                LabelEncoder]:
         # prepare encoder and encode training data
-        self._text_enc, self._label_enc, x_train, y_train = prepare_encoders(
-            storage_folder=self._encoder_folder,
+        self._text_enc, self._label_enc = self._prepare_or_load_encoders(
             training_data=training_data,
-            text_enc_init=lambda: TokenSequenceEncoder(
+            initialized_text_enc=TokenSequenceEncoder(
                 limit_vocabulary=self._vocabulary_size,
                 default_length=self._max_text_length),
         )
+
+        # extract data vectors (from training data)
+        text_list = list(tex for tex, lab in training_data)
+        x_train: np.ndarray = self._text_enc.encode(texts=text_list)
+
+        # cleanup memory
+        del text_list
+        gc.collect()
+
+        # prepare training labels
+        y_train: np.ndarray = self._label_enc.make_categorical(labeled_data=training_data)
+
         # load or train model
         self._train_or_load_model(x_train, y_train)
         return self._model, self._text_enc, self._label_enc
+
+    def _prepare_or_load_encoders(self,
+                                  training_data: List[Tuple[str, int]],
+                                  initialized_text_enc: AbstractTokenEncoder,
+                                  ) -> Tuple[AbstractTokenEncoder, LabelEncoder]:
+        if not self._encoder_folder.exists():
+            self._encoder_folder.mkdir(parents=True, exist_ok=True)
+
+        text_encoder_file = self._encoder_folder / "text-encoder.pickle"
+        label_encoder_file = self._encoder_folder / "label-encoder.pickle"
+
+        text_enc: AbstractTokenEncoder = None
+        label_enc: LabelEncoder = None
+        if text_encoder_file.exists() and label_encoder_file.exists():
+            logging.info(f"Loading encoders from files: {text_encoder_file}, {label_encoder_file}")
+            with open(str(text_encoder_file), "rb") as pickle_file:
+                text_enc: AbstractTokenEncoder = pickle.load(pickle_file)
+            with open(str(label_encoder_file), "rb") as pickle_file:
+                label_enc: LabelEncoder = pickle.load(pickle_file)
+
+        text_list = list(tex for tex, lab in training_data)
+        if not text_enc or not label_enc:
+            # extract vocab (from training data)
+            text_enc = initialized_text_enc
+            text_enc.prepare(texts=text_list, show_progress=True)
+
+            # create label encoder based on training data
+            label_enc = LabelEncoder(labeled_data=training_data)
+
+            #
+            # serialize data for next time
+            #
+            with open(str(text_encoder_file), 'wb') as pickle_file:
+                pickle.dump(text_enc, pickle_file)
+            with open(str(label_encoder_file), 'wb') as pickle_file:
+                pickle.dump(label_enc, pickle_file)
+
+        # cleanup memory
+        del text_list
+        gc.collect()
+
+        return text_enc, label_enc
 
     def _plot_training_stats(self, history: History):
         # plot accuracy
@@ -247,6 +301,7 @@ class ImdbClassifier:
             title="Training and validation loss", x_label="Epochs", y_label="Loss",
         )
 
+    # noinspection PyUnresolvedReferences
     def _train_or_load_model(self, x_train: np.ndarray, y_train: np.ndarray) -> Sequential:
         model_file = self._experiment_folder / "keras-model.hd5"
         if model_file.exists():
@@ -432,5 +487,3 @@ class ImdbClassifier:
             logging.warning(f"KeyboardInterrupt: Interrupting model fit ...")
 
         return model
-
-
