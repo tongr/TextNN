@@ -24,8 +24,8 @@ def imdb_file_ref_generator(base_folder, pos_only: bool = None, train_only: bool
     from itertools import chain
     base_folder = Path(base_folder)
     assert base_folder.exists(), "Base folder {} does not exist!".format(base_folder)
-    for subpath in ["train/neg", "train/pos", "test/neg", "test/pos"]:
-        assert (base_folder / subpath).exists(), "Data folder {} does not exist!".format(base_folder)
+    for sub_path in ["train/neg", "train/pos", "test/neg", "test/pos"]:
+        assert (base_folder / sub_path).exists(), "Data folder {} does not exist!".format(base_folder)
 
     result_generators = []
     if pos_only is None or pos_only:
@@ -89,7 +89,7 @@ class ImdbClassifier:
         model will set apart this fraction of the training data, will not train on it, and will evaluate the loss and
         any model metrics on this data at the end of each epoch. The validation data is selected from the last samples
         in the `x` and `y` data provided, before shuffling.
-        :param log_config: if True a the config of this isntance is printed after setup
+        :param log_config: if True a the config of this instance is printed after setup
         """
         self._data_folder: Path = data_folder if isinstance(data_folder, PurePath) else Path(data_folder)
         self._vocabulary_size = vocabulary_size
@@ -111,37 +111,55 @@ class ImdbClassifier:
         self._model: Sequential = None
         self._text_enc: AbstractTokenEncoder = None
         self._label_enc: LabelEncoder = None
-        self._layers, self._layer_definitions = self.parse_layer_definitions(
+        self._layers, self._layer_definitions = self._parse_layer_definitions(
             layer_definitions if layer_definitions else "Dropout(0.5)|LSTM(8,dropout=0.5)")
         if log_config:
             logging.info(f"{self.__class__.__name__}-configuration:\n{self.config}")
 
-    @property
-    def _config_parameters(self) -> Iterable[Tuple[str, Any]]:
-        from itertools import chain
-        kv = chain(
-            self.__dict__.items(),
-            [("_encoder_folder", self._encoder_folder),
-             ("_model_folder", self._model_folder),
-             ("_experiment_folder", self._experiment_folder)])
-        return ((key.lstrip("_"), value) for key, value in kv)
+    #
+    # public methods
+    #
+    def train_and_evaluate(self):
+        # get training data
+        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
+        # prepare the model
+        self._train_or_load_model_and_encoders(training_data)
+
+        del training_data
+        gc.collect()
+
+        # extract test data
+        test_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=False))
+        # evaluate the performance of the model
+        self._evaluate_model(test_data)
+
+        del test_data
+        gc.collect()
+
+    def test_encoding(self, *texts: str):
+        if len(texts) <= 0:
+            logging.warning("Please specify at least one text to encode!")
+            return
+
+        # get training data
+        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
+
+        # prepare the model
+        self._train_or_load_model_and_encoders(training_data)
+
+        # debug the text encoder
+        logging.info(f"Trying to encode the following texts: {texts}")
+        self._text_enc.print_representations(texts)
 
     @property
     def config(self) -> str:
         return "\n".join(f"  {key}: {value}" for key, value in sorted(self._config_parameters))
 
-    @property
-    def _encoder_folder(self) -> Path:
-        # name sub-folder
-        return self._data_folder / join_name([
-            # create name by joining all of the following elements (remove empty strings / None)
-            "sequences",
-            f"vocab{self._vocabulary_size}",
-            f"pad{self._max_text_length}" if self._max_text_length else None,
-        ])
-
+    #
+    # config accessors
+    #
     @staticmethod
-    def parse_layer_definitions(layer_definitions: Union[str, List[str]], sep="|"):
+    def _parse_layer_definitions(layer_definitions: Union[str, List[str]], sep="|"):
         def layer_class_names(packages):
             import inspect
             import importlib
@@ -166,6 +184,26 @@ class ImdbClassifier:
 
             layers.append(eval(layer_def))
         return layers, layer_definitions
+
+    @property
+    def _config_parameters(self) -> Iterable[Tuple[str, Any]]:
+        from itertools import chain
+        kv = chain(
+            self.__dict__.items(),
+            [("_encoder_folder", self._encoder_folder),
+             ("_model_folder", self._model_folder),
+             ("_experiment_folder", self._experiment_folder)])
+        return ((key.lstrip("_"), value) for key, value in kv)
+
+    @property
+    def _encoder_folder(self) -> Path:
+        # name sub-folder
+        return self._data_folder / join_name([
+            # create name by joining all of the following elements (remove empty strings / None)
+            "sequences",
+            f"vocab{self._vocabulary_size}",
+            f"pad{self._max_text_length}" if self._max_text_length else None,
+        ])
 
     @property
     def _model_folder(self) -> Path:
@@ -195,32 +233,10 @@ class ImdbClassifier:
             f"validation-split{self._validation_split}" if self._validation_split else None,
         ])
 
-    def _train_or_load_model_and_encoders(self, training_data: List[Tuple[str, int]]) -> Tuple[Sequential,
-                                                                                               AbstractTokenEncoder,
-                                                                                               LabelEncoder]:
-        # prepare encoder and encode training data
-        self._text_enc, self._label_enc = self._prepare_or_load_encoders(
-            training_data=training_data,
-            initialized_text_enc=TokenSequenceEncoder(
-                limit_vocabulary=self._vocabulary_size,
-                default_length=self._max_text_length),
-        )
-
-        # extract data vectors (from training data)
-        text_list = list(tex for tex, lab in training_data)
-        x_train: np.ndarray = self._text_enc.encode(texts=text_list)
-
-        # cleanup memory
-        del text_list
-        gc.collect()
-
-        # prepare training labels
-        y_train: np.ndarray = self._label_enc.make_categorical(labeled_data=training_data)
-
-        # load or train model
-        self._train_or_load_model(x_train, y_train)
-        return self._model, self._text_enc, self._label_enc
-
+    #
+    # preparation
+    #
+    # prepare encoders
     def _prepare_or_load_encoders(self,
                                   training_data: List[Tuple[str, int]],
                                   initialized_text_enc: AbstractTokenEncoder,
@@ -262,6 +278,35 @@ class ImdbClassifier:
         gc.collect()
 
         return text_enc, label_enc
+
+    #
+    # prepare model
+    #
+    def _train_or_load_model_and_encoders(self, training_data: List[Tuple[str, int]]) -> Tuple[Sequential,
+                                                                                               AbstractTokenEncoder,
+                                                                                               LabelEncoder]:
+        # prepare encoder and encode training data
+        self._text_enc, self._label_enc = self._prepare_or_load_encoders(
+            training_data=training_data,
+            initialized_text_enc=TokenSequenceEncoder(
+                limit_vocabulary=self._vocabulary_size,
+                default_length=self._max_text_length),
+        )
+
+        # extract data vectors (from training data)
+        text_list = list(tex for tex, lab in training_data)
+        x_train: np.ndarray = self._text_enc.encode(texts=text_list)
+
+        # cleanup memory
+        del text_list
+        gc.collect()
+
+        # prepare training labels
+        y_train: np.ndarray = self._label_enc.make_categorical(labeled_data=training_data)
+
+        # load or train model
+        self._train_or_load_model(x_train, y_train)
+        return self._model, self._text_enc, self._label_enc
 
     def _plot_training_stats(self, history: History):
         # plot accuracy
@@ -342,108 +387,6 @@ class ImdbClassifier:
 
         return self._model
 
-    def _evaluate_model(self, test_data: List[Tuple[str, int]]):
-        # extract data vectors (from test data)
-        x_test: np.ndarray = self._text_enc.encode(texts=list(text for text, lab in test_data))
-
-        # extract label vectors (from test data)
-        y_test_categories: np.ndarray = self._label_enc.make_categorical(labeled_data=test_data)
-        gc.collect()
-
-        logging.info("Creating predictions ...")
-        y_predicted_categories = self._model.predict(x_test, batch_size=self._batch_size)
-        gc.collect()
-
-        from sklearn.metrics.classification import accuracy_score, precision_recall_fscore_support
-        y_test = self._label_enc.max_category(y_test_categories)
-        y_predicted = self._label_enc.max_category(y_predicted_categories)
-        logging.info("Results:")
-        logging.info("{}".format(precision_recall_fscore_support(y_true=y_test, y_pred=y_predicted)))
-        logging.info("{}".format(accuracy_score(y_true=y_test, y_pred=y_predicted)))
-
-        from sklearn.metrics.classification import classification_report
-        logging.info("\n{}".format(classification_report(y_true=y_test,
-                                                         y_pred=y_predicted,
-                                                         target_names=["neg", "pos"],
-                                                         )))
-        import json
-        write_text_file(
-            file_path=self._experiment_folder / "test.json",
-            text=json.dumps(classification_report(y_true=y_test,
-                                                  y_pred=y_predicted,
-                                                  target_names=["neg", "pos"],
-                                                  output_dict=True)))
-
-    def train_and_evaluate(self):
-        # get training data
-        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
-        # prepare the model
-        self._train_or_load_model_and_encoders(training_data)
-
-        del training_data
-        gc.collect()
-
-        # extract test data
-        test_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=False))
-        # evaluate the performance of the model
-        self._evaluate_model(test_data)
-
-        del test_data
-        gc.collect()
-
-    def test_encoding(self, *texts: str):
-        if len(texts) <= 0:
-            logging.warning("Please specify at least one text to encode!")
-            return
-
-        # get training data
-        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
-
-        # prepare the model
-        self._train_or_load_model_and_encoders(training_data)
-
-        # debug the text encoder
-        logging.info(f"Trying to encode the following texts: {texts}")
-        self._text_enc.print_representations(texts)
-
-    def _setup_model(self,
-                     y: Union[np.ndarray, int],
-                     embedding_matrix: np.ndarray = None,
-                     ) -> Tuple[Sequential, Any]:
-        """
-        Prepare a `Sequential` model for text classification tasks
-        :param y: training labels or the number of training labels
-        :param embedding_matrix: pre-trained embedding matrix to use instead of training new embedding layer
-        :return: the untrained model and the loss function
-        """
-        # create a sequential model
-        model = Sequential()
-
-        # first layer: embedding
-        if embedding_matrix is not None:
-            model.add(Embedding(input_dim=self._vocabulary_size, output_dim=embedding_matrix.shape[1],
-                                weights=[embedding_matrix], trainable=self._retrain_embedding_matrix))
-        else:
-            model.add(Embedding(input_dim=self._vocabulary_size, output_dim=self._embedding_size))
-
-        # further layers ...
-        if self._layers:
-            for layer in self._layers:
-                model.add(layer)
-
-        # final layer: provides class/label output
-        num_categories: int = y.shape[1] if not isinstance(y, int) else y
-        if num_categories > 1:
-            model.add(Dense(num_categories, activation='softmax'))
-            loss = 'categorical_crossentropy'
-        else:
-            model.add(Dense(1, activation='sigmoid'))
-            loss = 'binary_crossentropy'
-
-        model.summary()
-
-        return model, loss
-
     def _train_model(self,
                      x: np.ndarray, y: np.ndarray,
                      embedding_matrix: np.ndarray = None,
@@ -487,3 +430,76 @@ class ImdbClassifier:
             logging.warning(f"KeyboardInterrupt: Interrupting model fit ...")
 
         return model
+
+    def _setup_model(self,
+                     y: Union[np.ndarray, int],
+                     embedding_matrix: np.ndarray = None,
+                     ) -> Tuple[Sequential, Any]:
+        """
+        Prepare a `Sequential` model for text classification tasks
+        :param y: training labels or the number of training labels
+        :param embedding_matrix: pre-trained embedding matrix to use instead of training new embedding layer
+        :return: the untrained model and the loss function
+        """
+        # create a sequential model
+        model = Sequential()
+
+        # first layer: embedding
+        if embedding_matrix is not None:
+            model.add(Embedding(input_dim=self._vocabulary_size, output_dim=embedding_matrix.shape[1],
+                                weights=[embedding_matrix], trainable=self._retrain_embedding_matrix))
+        else:
+            model.add(Embedding(input_dim=self._vocabulary_size, output_dim=self._embedding_size))
+
+        # further layers ...
+        if self._layers:
+            for layer in self._layers:
+                model.add(layer)
+
+        # final layer: provides class/label output
+        num_categories: int = y.shape[1] if not isinstance(y, int) else y
+        if num_categories > 1:
+            model.add(Dense(num_categories, activation='softmax'))
+            loss = 'categorical_crossentropy'
+        else:
+            model.add(Dense(1, activation='sigmoid'))
+            loss = 'binary_crossentropy'
+
+        model.summary()
+
+        return model, loss
+
+    #
+    # evaluation
+    #
+    def _evaluate_model(self, test_data: List[Tuple[str, int]]):
+        # extract data vectors (from test data)
+        x_test: np.ndarray = self._text_enc.encode(texts=list(text for text, lab in test_data))
+
+        # extract label vectors (from test data)
+        y_test_categories: np.ndarray = self._label_enc.make_categorical(labeled_data=test_data)
+        gc.collect()
+
+        logging.info("Creating predictions ...")
+        y_predicted_categories = self._model.predict(x_test, batch_size=self._batch_size)
+        gc.collect()
+
+        from sklearn.metrics.classification import accuracy_score, precision_recall_fscore_support
+        y_test = self._label_enc.max_category(y_test_categories)
+        y_predicted = self._label_enc.max_category(y_predicted_categories)
+        logging.info("Results:")
+        logging.info("{}".format(precision_recall_fscore_support(y_true=y_test, y_pred=y_predicted)))
+        logging.info("{}".format(accuracy_score(y_true=y_test, y_pred=y_predicted)))
+
+        from sklearn.metrics.classification import classification_report
+        logging.info("\n{}".format(classification_report(y_true=y_test,
+                                                         y_pred=y_predicted,
+                                                         target_names=["neg", "pos"],
+                                                         )))
+        import json
+        write_text_file(
+            file_path=self._experiment_folder / "test.json",
+            text=json.dumps(classification_report(y_true=y_test,
+                                                  y_pred=y_predicted,
+                                                  target_names=["neg", "pos"],
+                                                  output_dict=True)))
