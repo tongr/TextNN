@@ -23,7 +23,8 @@ from textnn.utils.encoding.text import AbstractTokenEncoder, TokenSequenceEncode
 def get_path_value(data: dict, path: list) -> object:
     assert len(path) > 0, "Path empty!"
     current = path[0]
-    assert current in data, f"Path entry {current} not found in {data}!"
+    assert current in data if isinstance(data, dict) else len(data) > current, \
+        f"Path entry {current} not found in '{data}'!"
 
     if len(path) == 1:
         # we are at the end of the path
@@ -47,10 +48,11 @@ def set_path_value(data: dict, path: list, value):
         set_path_value(data[current], path[1:], value)
 
 
-def get_accessor_paths(data: dict) -> list:
+def get_accessor_paths(data: Union[dict, list]) -> list:
     paths = []
-    for k, v in data.items():
-        if isinstance(v, dict):
+
+    for k, v in data.items() if isinstance(data, dict) else enumerate(data):
+        if isinstance(v, dict) or isinstance(v, list):
             # extend all child paths by the key
             for child_paths in get_accessor_paths(v):
                 paths.append([k] + child_paths)
