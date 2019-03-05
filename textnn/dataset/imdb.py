@@ -1,5 +1,6 @@
 import gc
 import hashlib
+import json
 import logging
 import pickle
 from pathlib import PurePath, Path
@@ -14,6 +15,57 @@ from keras.optimizers import Adam
 from textnn.utils import plot2file, join_name, read_text_file, write_text_file
 from textnn.utils.encoding.label import LabelEncoder
 from textnn.utils.encoding.text import AbstractTokenEncoder, TokenSequenceEncoder, VectorFileEmbeddingMatcher
+
+
+#
+# statistic utils
+#
+def get_path_value(data: dict, path: list) -> object:
+    assert len(path) > 0, "Path empty!"
+    current = path[0]
+    assert current in data, f"Path entry {current} not found in {data}!"
+
+    if len(path) == 1:
+        # we are at the end of the path
+        return data[current]
+
+    # go deeper
+    return get_path_value(data[current], path[1:])
+
+
+def set_path_value(data: dict, path: list, value):
+    assert len(path) > 0, "Path empty!"
+    current = path[0]
+
+    if len(path) == 1:
+        # we are at the end of the path
+        data[current] = value
+    else:
+        if current not in data:
+            data[current] = {}
+        # go deeper
+        set_path_value(data[current], path[1:], value)
+
+
+def get_accessor_paths(data: dict) -> list:
+    paths = []
+    for k, v in data.items():
+        if isinstance(v, dict):
+            # extend all child paths by the key
+            for child_paths in get_accessor_paths(v):
+                paths.append([k] + child_paths)
+        else:
+            paths.append([k])
+    return paths
+
+
+def statistics(data: List[dict]):
+    stats = {}
+    paths = get_accessor_paths(data[0])
+    for path in paths:
+        values = np.array([get_path_value(data=d, path=path) for d in data])
+        set_path_value(data=stats, path=path, value={"mean": values.mean(), "std": values.std()})
+    return stats
 
 
 #
@@ -190,7 +242,7 @@ class ImdbClassifier:
 
         results = []
         for fold_idx, (train_instances, test_instances) in enumerate(k_fold.split(x, y_class_labels)):
-            logging.info(f"Validating fold {fold_idx+1} of {k}")
+            logging.info(f"Validating fold {fold_idx + 1} of {k}")
             fold_config = copy(self)
             fold_config._experiment_folder = self._experiment_folder / f"fold_{fold_idx}"
             fold_config._shuffle_training_data = False
@@ -200,8 +252,15 @@ class ImdbClassifier:
 
             results.append(fold_config._validate_model(x=x[test_instances], y=y[test_instances]))
         # TODO collect results and build statistics
+        stats = statistics(data=results)
         logging.info("results:")
         logging.info("\n".join(str(result) for result in results))
+        logging.info("stats:")
+        logging.info(stats)
+
+        write_text_file(
+            file_path=self._experiment_folder / "cross_validation.json",
+            text=json.dumps(stats))
 
         del data
         gc.collect()
@@ -408,9 +467,6 @@ class ImdbClassifier:
         Train a or load a `Sequential` model for text classification tasks
         :param x_train: training data
         :param y_train: training labels
-        :param validation_data: tuple `(x_val, y_val)` or tuple `(x_val, y_val, val_sample_weights)` on which to
-        evaluate the loss and any model metrics at the end of each epoch. The model will not be trained on this data.
-        `validation_data` will override `validation_split`.
         :return: the trained (fitted) model
         """
         assert len(x_train) == len(y_train), "The x and y data matrices need to contain the same number of instances!"
@@ -568,7 +624,6 @@ class ImdbClassifier:
                                         target_names=["neg", "pos"],
                                         output_dict=True)
         results["accuracy"] = accuracy
-        import json
         write_text_file(
             file_path=self._experiment_folder / validation_file_name,
             text=json.dumps(results))
