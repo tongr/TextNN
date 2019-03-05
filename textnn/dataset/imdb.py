@@ -250,6 +250,7 @@ class ImdbClassifier:
         )
 
         results = []
+        histories = []
         for fold_idx, (train_instances, test_instances) in enumerate(k_fold.split(x, y_class_labels)):
             logging.info(f"Validating fold {fold_idx + 1} of {k}")
             fold_config = copy(self)
@@ -260,7 +261,9 @@ class ImdbClassifier:
                                                           validation_data=(x[test_instances], y[test_instances]))
 
             results.append(fold_config._validate_model(x=x[test_instances], y=y[test_instances]))
-        # TODO collect results and build statistics
+            histories.append(fold_config._model.history.history)
+
+        # collect results and build statistics
         stats = statistics(data=results)
         logging.info("results:")
         logging.info("\n".join(str(result) for result in results))
@@ -273,6 +276,7 @@ class ImdbClassifier:
 
         del data
         gc.collect()
+        self._plot_all_cross_validation_stats(histories)
 
     #
     # config accessors
@@ -433,6 +437,39 @@ class ImdbClassifier:
         self._model = self._train_or_load_model(x_train, y_train)
         return self._model, self._text_enc, self._label_enc
 
+    def _plot_cross_validation_stats(self, hist_stats: dict, measure: str, longname: str = None):
+        def get_values(stat_name, m=measure):
+            return list(hist_stats[m][idx][stat_name] if idx in hist_stats[m] else None
+                        for idx in range(self._num_epochs))
+
+        if not longname:
+            longname = measure.title()
+
+        shaded_areas = [(f"Min training {longname}", f"Max training {longname}", "b", .2)]
+        y_series = {
+            f"Mean training {longname}": get_values("mean"),
+            f"Min training {longname}": get_values("min"),
+            f"Max training {longname}": get_values("max"),
+        }
+        if f"val_{measure}" in hist_stats:
+            y_series[f"Mean validation {longname}"] = get_values("mean", f"val_{measure}")
+            y_series[f"Min validation {longname}"] = get_values("min", f"val_{measure}")
+            y_series[f"Max validation {longname}"] = get_values("max", f"val_{measure}")
+            shaded_areas.append((f"Min validation {longname}", f"Max validation {longname}", "r", .2))
+
+        plot2file(
+            file=self._experiment_folder / f"{longname}.png".lower().replace(" ", "_"),
+            x_values=list(range(self._num_epochs)), y_series=y_series,
+            title=f"Training and validation {longname}", x_label="Epochs", y_label=longname,
+            shaded_areas=shaded_areas
+        )
+
+    def _plot_all_cross_validation_stats(self, histories: List[dict]):
+        hist_stats = statistics(histories, add_raw_values=True)
+        self._plot_cross_validation_stats(hist_stats, "acc", "Accuracy")
+        self._plot_cross_validation_stats(hist_stats, "mean_squared_error", "MSE")
+        self._plot_cross_validation_stats(hist_stats, "loss", "Cross entropy")
+
     def _plot_training_stats(self, history: History):
         # plot accuracy
         y_series = {"Training acc": history.history["acc"], }
@@ -452,23 +489,14 @@ class ImdbClassifier:
             x_values=list(range(self._num_epochs)), y_series=y_series,
             title="Training and validation Mean Squared Error", x_label="Epochs", y_label="MSE",
         )
-        # plot KL Divergence
-        y_series = {"Training KL Divergence": history.history["kullback_leibler_divergence"], }
-        if "val_kullback_leibler_divergence" in history.history:
-            y_series["Validation Kullback Leibler Divergence"] = history.history["val_kullback_leibler_divergence"]
-        plot2file(
-            file=self._experiment_folder / "kld.png",
-            x_values=list(range(self._num_epochs)), y_series=y_series,
-            title="Training and validation KL Divergence", x_label="Epochs", y_label="KL Divergence",
-        )
         # plot loss
-        y_series = {"Training loss": history.history['loss'], }
+        y_series = {"Training Cross entropy": history.history['loss'], }
         if "val_loss" in history.history:
-            y_series["Validation loss"] = history.history["val_loss"]
+            y_series["Validation Cross entropy"] = history.history["val_loss"]
         plot2file(
-            file=self._experiment_folder / "loss.png",
+            file=self._experiment_folder / "cross_entropy.png",
             x_values=list(range(self._num_epochs)), y_series=y_series,
-            title="Training and validation loss", x_label="Epochs", y_label="Loss",
+            title="Training and validation loss", x_label="Epochs", y_label="Cross entropy",
         )
 
     def _train_or_load_model(self, x_train: np.ndarray, y_train: np.ndarray) -> Sequential:
@@ -528,7 +556,7 @@ class ImdbClassifier:
         model, loss = self._setup_model(y=y)
         model.compile(loss=loss,
                       optimizer=Adam(lr=self._learning_rate, decay=self._learning_decay),
-                      metrics=['accuracy', 'mean_squared_error', 'kullback_leibler_divergence'],
+                      metrics=['accuracy', 'mean_squared_error'],
                       )
 
         try:
