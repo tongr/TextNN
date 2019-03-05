@@ -61,12 +61,19 @@ def get_accessor_paths(data: Union[dict, list]) -> list:
     return paths
 
 
-def statistics(data: List[dict]):
+def statistics(data: List[dict], add_raw_values: bool = False):
     stats = {}
     paths = get_accessor_paths(data[0])
     for path in paths:
-        values = np.array([get_path_value(data=d, path=path) for d in data])
-        set_path_value(data=stats, path=path, value={"mean": values.mean(), "std": values.std()})
+        values = np.array([get_path_value(data=d, path=path) for d in data], dtype=np.float)
+        val_stats = {
+            "mean": values.mean(), "std": values.std(),
+            "min": values.min(), "max": values.max(),
+            "median": np.median(values),
+        }
+        if add_raw_values:
+            val_stats["all"] = values.tolist()
+        set_path_value(data=stats, path=path, value=val_stats)
     return stats
 
 
