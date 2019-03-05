@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Tuple
 
 from keras.utils.generic_utils import Progbar, time
 
@@ -78,7 +78,9 @@ def join_name(name_parts: list, separator: str = "__", ignore_none: bool = True)
 
 
 def plot2file(file: Path, x_values: list, y_series: Dict[str, list],
-              title: str = None, x_label: str = None, y_label: str = None, series_styles: List[str] = None):
+              title: str = None, x_label: str = None, y_label: str = None, series_styles: List[str] = None,
+              shaded_areas: Iterable[Tuple[str, str, str, float]] = None,
+              ) -> None:
     """
     plot the given data to a file
     :param file: storage location of the plot
@@ -89,6 +91,11 @@ def plot2file(file: Path, x_values: list, y_series: Dict[str, list],
     :param y_label: the y axis label
     :param series_styles: the styles of the `y_series` (see "Format Strings" in
     https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html)
+    :param shaded_areas: definition of the shaded areas to plot, where each area is defined by a tuple consisting of:
+    1. name of first y-series<br/>
+    2. name of second y-series<br/>
+    3. color of the shaded area (e.g., k)<br/>
+    4. alpha-value of the shaded area
     """
     try:
         import matplotlib.pyplot as plt
@@ -112,6 +119,12 @@ def plot2file(file: Path, x_values: list, y_series: Dict[str, list],
         plt.xlabel(x_label)
         plt.ylabel(y_label)
         plt.legend()
+
+        if shaded_areas:
+            for area_y1_name, area_y2_name, area_color, area_alpha in shaded_areas:
+                area_y1 = y_series[area_y1_name] + [None] * (max_len - len(y_series[area_y1_name]))
+                area_y2 = y_series[area_y2_name] + [None] * (max_len - len(y_series[area_y2_name]))
+                plt.fill_between(x_values, area_y1, area_y2, color=area_color, alpha=area_alpha)
 
         if not file.parent.exists():
             file.parent.mkdir(exist_ok=True, parents=True)
