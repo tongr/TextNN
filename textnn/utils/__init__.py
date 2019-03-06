@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Iterable, List, Tuple, Union
 
 from keras.utils.generic_utils import Progbar, time
 
@@ -77,23 +77,31 @@ def join_name(name_parts: list, separator: str = "__", ignore_none: bool = True)
     return separator.join(e for e in name_parts if not ignore_none or e is not None)
 
 
-def plot2file(file: Path, x_values: list, y_series: Dict[str, list],
-              title: str = None, x_label: str = None, y_label: str = None, series_styles: List[str] = None,
-              shaded_areas: Iterable[Tuple[str, str, str, float]] = None,
-              ) -> None:
+def plot_to_file(file: Path,
+                 x_values: list,
+                 y_series: List[tuple],
+                 title: str = None, x_label: str = None, y_label: str = None, default_series_styles: List[str] = None,
+                 shaded_areas: Iterable[Tuple[Union[str, list], Union[str, list], str, float]] = None,
+                 ) -> None:
     """
     plot the given data to a file
     :param file: storage location of the plot
     :param x_values: list of x values to plot
-    :param y_series: dictionary of named(key) lists containing the y values to plot
+    :param y_series: list of y-series to plot, where each seriesis defined by a tuple consisting of:<br/>
+    1. name/label of first y-series<br/>
+    2. y-values of all data points to plot (order according to `x_values`)<br/>
+    3. Optional: style definition of the series (see "Format Strings" in
+    https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html)<br/>
+    4. Optional: if False the series will not be shown in the legend (default: True)
     :param title: the plot title
     :param x_label: the x axis label
     :param y_label: the y axis label
-    :param series_styles: the styles of the `y_series` (see "Format Strings" in
+    :param default_series_styles: the styles of the `y_series` if not given in the tuple (see "Format Strings" in
     https://matplotlib.org/api/_as_gen/matplotlib.pyplot.plot.html)
-    :param shaded_areas: definition of the shaded areas to plot, where each area is defined by a tuple consisting of:
-    1. name of first y-series<br/>
-    2. name of second y-series<br/>
+    :param shaded_areas: list of shaded area definitions to plot, where each area is defined by a tuple consisting
+    of:<br/>
+    1. name of first y-series or list of y-values of the first series<br/>
+    2. name of second y-series or list of y-values of the second series<br/>
     3. color of the shaded area (e.g., k)<br/>
     4. alpha-value of the shaded area
     """
@@ -101,30 +109,54 @@ def plot2file(file: Path, x_values: list, y_series: Dict[str, list],
         import matplotlib.pyplot as plt
         # inspired by the tensorflow introduction of François Chollet
         # https://www.tensorflow.org/tutorials/keras/basic_text_classification
-        if not series_styles:
+        if not default_series_styles:
             # default styles: iterate through different combinations
-            series_styles = list(f"{color}{marker}{line}"
-                                 for line in "- -- -. :".split()
-                                 for marker in " o v ^ s P X".split(" ")
-                                 for color in "b r g c m y k".split())
+            default_series_styles = list(f"{color}{marker}{line}"
+                                         for line in "- -- -. :".split()
+                                         for marker in " o v ^ s P X".split(" ")
+                                         for color in "b r g c m y k".split())
 
-        max_len = max(len(l) for l in [x_values]+list(y_series.values()))
+        legend_handles = []
+        legend_labels = []
+        cached_y_series_data = {}
+        max_len = max([len(x_values)] + list(len(s[1]) for s in y_series))
         x_values = x_values + [None] * (max_len - len(x_values))
-        for idx, (series_label, y_values) in enumerate(y_series.items()):
-            style = series_styles[idx % len(series_styles)]
-            y_values = y_values + [None] * (max_len - len(y_values))
-            plt.plot(x_values, y_values, style, label=series_label)
+        for idx, data_tuple in enumerate(y_series):
+            # element 0: label
+            series_label = data_tuple[0]
+            # element 1: y-values
+            y_values = data_tuple[1] + [None] * (max_len - len(data_tuple[1]))
+            cached_y_series_data[series_label] = y_values
+            # element 2 (optional): style
+            if len(data_tuple) > 2:
+                style = data_tuple[2]
+            else:
+                style = default_series_styles[idx % len(default_series_styles)]
+            series_handle, = plt.plot(x_values, y_values, style, label=series_label)
+            # element 3 (optional): show in legend (default: True)
+            if len(data_tuple) < 4 or data_tuple[3]:
+                # add series to legend
+                legend_handles.append(series_handle)
+                legend_labels.append(series_label)
 
         plt.title(title)
         plt.xlabel(x_label)
         plt.ylabel(y_label)
-        plt.legend()
+        if legend_handles:
+            plt.legend(handles=legend_handles, labels=legend_labels)
 
         if shaded_areas:
-            for area_y1_name, area_y2_name, area_color, area_alpha in shaded_areas:
-                area_y1 = y_series[area_y1_name] + [None] * (max_len - len(y_series[area_y1_name]))
-                area_y2 = y_series[area_y2_name] + [None] * (max_len - len(y_series[area_y2_name]))
-                plt.fill_between(x_values, area_y1, area_y2, color=area_color, alpha=area_alpha)
+            for area_y1, area_y2, area_color, area_alpha in shaded_areas:
+                y1_series: list = cached_y_series_data[area_y1] if not isinstance(area_y1, list) else \
+                    area_y1 + [None] * (max_len - len(area_y1))
+                y2_series: list = cached_y_series_data[area_y2] if not isinstance(area_y2, list) else \
+                    area_y2 + [None] * (max_len - len(area_y2))
+
+                plt.fill_between(x=x_values,
+                                 y1=y1_series,
+                                 y2=y2_series,
+                                 color=area_color,
+                                 alpha=area_alpha)
 
         if not file.parent.exists():
             file.parent.mkdir(exist_ok=True, parents=True)

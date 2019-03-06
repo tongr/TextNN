@@ -12,7 +12,7 @@ from keras.layers import *
 from keras.models import save_model, load_model
 from keras.optimizers import Adam
 
-from textnn.utils import plot2file, join_name, read_text_file, write_text_file
+from textnn.utils import plot_to_file, join_name, read_text_file, write_text_file
 from textnn.utils.encoding.label import LabelEncoder
 from textnn.utils.encoding.text import AbstractTokenEncoder, TokenSequenceEncoder, VectorFileEmbeddingMatcher
 
@@ -445,22 +445,29 @@ class ImdbClassifier:
         if not longname:
             longname = measure.title()
 
-        shaded_areas = [(f"Min training {longname}", f"Max training {longname}", "b", .2)]
-        y_series = {
-            f"Mean training {longname}": get_values("mean"),
-            f"Min training {longname}": get_values("min"),
-            f"Max training {longname}": get_values("max"),
-        }
+        std = get_values("std")
+        y_series = [
+            (f"Training (mean)", get_values("mean"), "b-"),
+            (f"Training (std)", list(x+std[i] for i, x in enumerate(get_values("mean"))), "b:"),
+            (f"Training (std-)", list(x-std[i] for i, x in enumerate(get_values("mean"))), "b:", False),
+        ]
+        shaded_areas = [
+            (get_values("min"), get_values("max"), "b", .05),
+            (f"Training (std)", f"Training (std-)", "b", .1),
+        ]
         if f"val_{measure}" in hist_stats:
-            y_series[f"Mean validation {longname}"] = get_values("mean", f"val_{measure}")
-            y_series[f"Min validation {longname}"] = get_values("min", f"val_{measure}")
-            y_series[f"Max validation {longname}"] = get_values("max", f"val_{measure}")
-            shaded_areas.append((f"Min validation {longname}", f"Max validation {longname}", "r", .2))
+            mean = get_values("mean", f"val_{measure}")
+            std = get_values("std", f"val_{measure}")
+            y_series.append((f"Validation (mean)", mean, "r-"))
+            y_series.append((f"Validation (std)", list(x+std[i] for i, x in enumerate(mean)), "r:"))
+            y_series.append((f"Validation (std-)", list(x-std[i] for i, x in enumerate(mean)), "r:", False))
+            shaded_areas.append((get_values("min", f"val_{measure}"), get_values("max", f"val_{measure}"), "r", .05))
+            shaded_areas.append((f"Validation (std)", f"Validation (std-)", "r", .1))
 
-        plot2file(
-            file=self._experiment_folder / f"{longname}.png".lower().replace(" ", "_"),
+        plot_to_file(
+            file=self._experiment_folder / f"{longname}.pdf".lower().replace(" ", "_"),
             x_values=list(range(self._num_epochs)), y_series=y_series,
-            title=f"Training and validation {longname}", x_label="Epochs", y_label=longname,
+            title=f"Training and Validation {longname}", x_label="Epochs", y_label=longname,
             shaded_areas=shaded_areas
         )
 
@@ -468,35 +475,35 @@ class ImdbClassifier:
         hist_stats = statistics(histories, add_raw_values=True)
         self._plot_cross_validation_stats(hist_stats, "acc", "Accuracy")
         self._plot_cross_validation_stats(hist_stats, "mean_squared_error", "MSE")
-        self._plot_cross_validation_stats(hist_stats, "loss", "Cross entropy")
+        self._plot_cross_validation_stats(hist_stats, "loss", "Cross Entropy")
 
     def _plot_training_stats(self, history: History):
         # plot accuracy
-        y_series = {"Training acc": history.history["acc"], }
+        y_series = [("Training", history.history["acc"])]
         if "val_acc" in history.history:
-            y_series["Validation acc"] = history.history["val_acc"]
-        plot2file(
-            file=self._experiment_folder / "accuracy.png",
+            y_series.append(("Validation", history.history["val_acc"]))
+        plot_to_file(
+            file=self._experiment_folder / "accuracy.pdf",
             x_values=list(range(self._num_epochs)), y_series=y_series,
-            title="Training and validation accuracy", x_label="Epochs", y_label="Accuracy",
+            title="Training and Validation Accuracy", x_label="Epochs", y_label="Accuracy",
         )
         # plot MSE
-        y_series = {"Training MSE": history.history["mean_squared_error"], }
+        y_series = [("Training", history.history["mean_squared_error"])]
         if "val_mean_squared_error" in history.history:
-            y_series["Validation MSE"] = history.history["val_mean_squared_error"]
-        plot2file(
-            file=self._experiment_folder / "mse.png",
+            y_series.append(("Validation", history.history["val_mean_squared_error"]))
+        plot_to_file(
+            file=self._experiment_folder / "mse.pdf",
             x_values=list(range(self._num_epochs)), y_series=y_series,
-            title="Training and validation Mean Squared Error", x_label="Epochs", y_label="MSE",
+            title="Training and Validation Mean Squared Error", x_label="Epochs", y_label="MSE",
         )
         # plot loss
-        y_series = {"Training Cross entropy": history.history['loss'], }
+        y_series = [("Training", history.history['loss'])]
         if "val_loss" in history.history:
-            y_series["Validation Cross entropy"] = history.history["val_loss"]
-        plot2file(
-            file=self._experiment_folder / "cross_entropy.png",
+            y_series.append(("Validation", history.history["val_loss"]))
+        plot_to_file(
+            file=self._experiment_folder / "cross_entropy.pdf",
             x_values=list(range(self._num_epochs)), y_series=y_series,
-            title="Training and validation loss", x_label="Epochs", y_label="Cross entropy",
+            title="Training and Validation Cross Entropy", x_label="Epochs", y_label="Cross Entropy",
         )
 
     def _train_or_load_model(self, x_train: np.ndarray, y_train: np.ndarray) -> Sequential:
@@ -568,7 +575,7 @@ class ImdbClassifier:
             model.fit(x=x, y=y,
                       shuffle=False, validation_split=self._validation_split, validation_data=validation_data,
                       batch_size=self._batch_size, epochs=self._num_epochs,
-                      callbacks=[CSVLogger(str(csv_log), append=True, separator=';')])
+                      callbacks=[CSVLogger(str(csv_log), append=False, separator=';')])
         except KeyboardInterrupt:
             print()
             logging.warning(f"KeyboardInterrupt: Interrupting model fit ...")
