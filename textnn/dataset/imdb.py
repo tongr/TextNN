@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import pickle
+import random
 from pathlib import PurePath, Path
 from typing import List, Tuple, Union, Iterable, Any
 
@@ -248,10 +249,17 @@ class ImdbClassifier:
             shuffle=self._shuffle_training_data is not False,
             random_state=self._shuffle_training_data if isinstance(self._shuffle_training_data, int) else None
         )
+        # prepare random function
+        if self._shuffle_training_data is not False and self._shuffle_training_data is not True:
+            # assume `shuffle_training_data` contains the random seed
+            random.seed(self._shuffle_training_data)
 
         results = []
         histories = []
         for fold_idx, (train_instances, test_instances) in enumerate(k_fold.split(x, y_class_labels)):
+            if self._shuffle_training_data is not False:
+                # randomize training instances
+                random.shuffle(train_instances)
             logging.info(f"Validating fold {fold_idx + 1} of {k}")
             fold_config = copy(self)
             fold_config._experiment_folder = self._experiment_folder / f"fold_{fold_idx}"
