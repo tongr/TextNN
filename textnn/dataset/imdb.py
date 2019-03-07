@@ -626,13 +626,20 @@ class ImdbClassifier:
             for layer in self._layers:
                 model.add(layer)
 
+        # derive output layer shape
+        num_output_units: int = 1
+        if isinstance(y, int):
+            num_output_units: int = y
+        elif len(y.shape) == 2 and y.shape[1] > 1:
+            num_output_units: int = y.shape[1]
+
         # final layer: provides class/label output
-        num_categories: int = y.shape[1] if not isinstance(y, int) else y
-        if num_categories > 1:
-            model.add(Dense(num_categories, activation='softmax'))
+        if num_output_units > 1:
+            model.add(Dense(num_output_units, activation='softmax'))
             loss = 'categorical_crossentropy'
         else:
-            model.add(Dense(1, activation='sigmoid'))
+            # only one output unit required (i.e., only possible for binary classification)
+            model.add(Dense(num_output_units, activation='sigmoid'))
             loss = 'binary_crossentropy'
 
         model.summary()
