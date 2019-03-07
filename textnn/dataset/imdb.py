@@ -8,6 +8,7 @@ from pathlib import PurePath, Path
 from typing import List, Tuple, Union, Iterable, Any
 
 from keras import Sequential
+from keras.backend import clear_session as clear_keras_session
 from keras.callbacks import History, CSVLogger
 from keras.layers import *
 from keras.models import save_model, load_model
@@ -249,27 +250,21 @@ class ImdbClassifier:
             shuffle=self._shuffle_training_data is not False,
             random_state=self._shuffle_training_data if isinstance(self._shuffle_training_data, int) else None
         )
-        # prepare random function
-        if self._shuffle_training_data is not False and self._shuffle_training_data is not True:
-            # assume `shuffle_training_data` contains the random seed
-            random.seed(self._shuffle_training_data)
 
         results = []
         histories = []
         for fold_idx, (train_instances, test_instances) in enumerate(k_fold.split(x, y_class_labels)):
-            if self._shuffle_training_data is not False:
-                # randomize training instances
-                random.shuffle(train_instances)
+            # clean keras/tensorflow backend
+            clear_keras_session()
             logging.info(f"Validating fold {fold_idx + 1} of {k}")
             fold_config = copy(self)
             fold_config._experiment_folder = self._experiment_folder / f"fold_{fold_idx}"
-            fold_config._shuffle_training_data = False
             # split training and validation data and train model
             fold_config._model = fold_config._train_model(x[train_instances], y[train_instances],
                                                           validation_data=(x[test_instances], y[test_instances]))
 
             results.append(fold_config._validate_model(x=x[test_instances], y=y[test_instances]))
-            histories.append(fold_config._model.history.history)
+            histories.append(copy(fold_config._model.history.history))
 
         # collect results and build statistics
         stats = statistics(data=results)
@@ -659,7 +654,7 @@ class ImdbClassifier:
 
         self._validate_model(x=x_test, y=y_test_categories, validation_file_name="text.json")
 
-    def _validate_model(self, x: np.ndarray, y: np.ndarray, validation_file_name: str = "validation.json"):
+    def _validate_model(self, x: np.ndarray, y: np.ndarray, validation_file_name: str = "validation.json") -> dict:
         logging.info("Creating predictions ...")
         y_predicted_categories = self._model.predict(x, batch_size=self._batch_size)
         gc.collect()
