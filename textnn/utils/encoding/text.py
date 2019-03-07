@@ -356,7 +356,9 @@ class TokenSequenceEncoder(AbstractTokenEncoder):
 
         all characters: 0 (padding), 2 (OOV)
         :param default_length: length to which input text will be normalized per default (i.e., sequences longer than
-        this will be trimmed, shorter sequences will be padded).
+        this will be trimmed, shorter sequences will be padded). If negative, the text will be trimmed at the start of
+        the string such that so that the last `default_length` token of the text are encoded. If positive, the end of
+        long strings is removed if necessary.
         :param skip_top_words: skip the top N most frequently occurring words (which may not be informative).
         :param limit_vocabulary: limits the vocabulary size, i.e., max number of words to include. Words are ranked by
         how often they occur (in the training set) and only the most frequent words are kept. If `skip_top_words` is
@@ -371,7 +373,6 @@ class TokenSequenceEncoder(AbstractTokenEncoder):
         super().__init__(skip_top_words, limit_vocabulary,
                          reserved_words=["<PAD>", "<OOV>", "<START>", "<END>"],
                          **kwargs)
-        assert default_length is None or default_length > 0
         self.default_length = default_length
 
     def _texts_to_normalized_sequences(self, texts) -> Iterable[List[int]]:
@@ -385,16 +386,21 @@ class TokenSequenceEncoder(AbstractTokenEncoder):
         Please note, the resulting sequences will have the length of `pad_len + 1` because the sequence is preceeded by
         the start_char '^' or the oov token ('*')
         :param length: length to which input text will be normalized (i.e., sequences longer than this
-        will be trimmed, shorter sequences will be padded).
+        will be trimmed, shorter sequences will be padded). If negative, the text will be trimmed at the start of
+        the string such that so that the last `default_length` token of the text are encoded. If positive, the end of
+        long strings is removed if necessary.
         :return: the sequence representation of this
         """
         max_token: int = None
+        trim_end = True
         if length is not None:
             # decrease for in order to account `start_char`
-            max_token: int = length - 1
+            max_token: int = abs(length) - 1
+            trim_end = length > 0
         elif self.default_length is not None:
             # decrease for in order to account `start_char`
-            max_token: int = self.default_length - 1
+            max_token: int = abs(self.default_length) - 1
+            trim_end = self.default_length > 0
 
         max_seq_len = 0
         xs = []
@@ -411,7 +417,11 @@ class TokenSequenceEncoder(AbstractTokenEncoder):
 
         for idx, x in enumerate(xs):
             # add padding to fill up shorter texts and shrink longer texts
-            xs[idx] = [self.padding_token_index] * (max_token - len(x)) + [self.start_token_index] + x[:max_token]
+            padding = [self.padding_token_index] * (max_token - len(x))
+            if trim_end:
+                xs[idx] = padding + [self.start_token_index] + x[:max_token]
+            else:
+                xs[idx] = x[-max_token:] + [self.end_token_index] + padding
 
         return np.array(xs)
 
