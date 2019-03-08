@@ -3,7 +3,6 @@ import hashlib
 import json
 import logging
 import pickle
-import random
 from pathlib import PurePath, Path
 from typing import List, Tuple, Union, Iterable, Any
 
@@ -255,7 +254,7 @@ class ImdbClassifier:
         histories = []
         for fold_idx, (train_instances, test_instances) in enumerate(k_fold.split(x, y_class_labels)):
             # clean keras/tensorflow backend
-            clear_keras_session()
+            # clear_keras_session()
             logging.info(f"Validating fold {fold_idx + 1} of {k}")
             fold_config = copy(self)
             fold_config._experiment_folder = self._experiment_folder / f"fold_{fold_idx}"
@@ -525,15 +524,6 @@ class ImdbClassifier:
             model: Sequential = load_model(str(model_file))
 
         if not model:
-            if self._shuffle_training_data is not False:
-                if self._shuffle_training_data is not True:
-                    # assume `shuffle_training_data` contains the random seed
-                    np.random.seed(self._shuffle_training_data)
-                indices = np.arange(len(x_train))
-                np.random.shuffle(indices)
-                x_train = x_train[indices]
-                y_train = y_train[indices]
-
             # train the model
             model: Sequential = self._train_model(x=x_train, y=y_train)
 
@@ -561,6 +551,15 @@ class ImdbClassifier:
         :return: the trained (fitted) model
         """
         assert len(x) == len(y), "The x and y data matrices need to contain the same number of instances!"
+
+        if self._shuffle_training_data is not False:
+            if self._shuffle_training_data is not True:
+                # assume `shuffle_training_data` contains the random seed
+                np.random.seed(self._shuffle_training_data)
+            indices = np.arange(len(x))
+            np.random.shuffle(indices)
+            x = x[indices]
+            y = y[indices]
 
         # create a sequential model
         model, loss = self._setup_model(y=y)
