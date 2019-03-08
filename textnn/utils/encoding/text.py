@@ -348,7 +348,9 @@ class TokenSequenceEncoder(AbstractTokenEncoder):
     def end_token_index(self) -> int:
         return 3
 
-    def __init__(self, default_length: int = None, skip_top_words: int = 0, limit_vocabulary: int = None, **kwargs):
+    def __init__(self, default_length: int = None, skip_top_words: int = 0, limit_vocabulary: int = None,
+                 add_start_end_indicators: bool = True, pad_beginning: bool = True,
+                 **kwargs):
         """
         Initialize the Bag-of-Word text encoder
 
@@ -363,6 +365,10 @@ class TokenSequenceEncoder(AbstractTokenEncoder):
         :param limit_vocabulary: limits the vocabulary size, i.e., max number of words to include. Words are ranked by
         how often they occur (in the training set) and only the most frequent words are kept. If `skip_top_words` is
         used, the least common token in the accepted vocabulary will be `limit_vocab + skip_top_words`.
+        :param add_start_end_indicators: if True, add `"<START>"` and `"<END>"` indicators at start and end of the
+        encoded sequences
+        :param pad_beginning: if True, add padding (of short strings) at the start of the sequence, otherwise pad the
+        end
         :param mode: the selected mode for the BOW weight, one of "binary", "count", "tfidf", "freq"
         """
         # by convention, the Tokenizer uses 0 as padding, 1 as OOV word, hence, we use the following setup
@@ -374,6 +380,8 @@ class TokenSequenceEncoder(AbstractTokenEncoder):
                          reserved_words=["<PAD>", "<OOV>", "<START>", "<END>"],
                          **kwargs)
         self.default_length = default_length
+        self.add_start_end_indicators = add_start_end_indicators
+        self.pad_beginning = pad_beginning
 
     def _texts_to_normalized_sequences(self, texts) -> Iterable[List[int]]:
         return ([self._tokenizer_to_word_index(x) for x in text_vec] for text_vec in
@@ -394,13 +402,16 @@ class TokenSequenceEncoder(AbstractTokenEncoder):
         max_token: int = None
         trim_end = True
         if length is not None:
-            # decrease for in order to account `start_char`
-            max_token: int = abs(length) - 1
+            # decrease for in order to account `start_char`/`end_char`
+            max_token: int = abs(length)
             trim_end = length > 0
         elif self.default_length is not None:
-            # decrease for in order to account `start_char`
-            max_token: int = abs(self.default_length) - 1
+            # decrease for in order to account `start_char`/`end_char`
+            max_token: int = abs(self.default_length)
             trim_end = self.default_length > 0
+
+        if max_token and self.add_start_end_indicators:
+            max_token -= 2
 
         max_seq_len = 0
         xs = []
@@ -416,49 +427,55 @@ class TokenSequenceEncoder(AbstractTokenEncoder):
             max_token: int = max_seq_len
 
         for idx, x in enumerate(xs):
-            # add padding to fill up shorter texts and shrink longer texts
+            # prepare padding
             padding = [self.padding_token_index] * (max_token - len(x))
-            if trim_end:
-                xs[idx] = padding + [self.start_token_index] + x[:max_token]
-            else:
-                xs[idx] = x[-max_token:] + [self.end_token_index] + padding
+            # trim x to max size (from beginning or end
+            x = x[:max_token] if trim_end else x[-max_token:]
+            if self.add_start_end_indicators:
+                # use start/end indicators
+                x.insert(0, self.start_token_index)
+                x.append(self.end_token_index)
+
+            if padding:
+                # padding at start or end
+                x = (padding + x) if self.pad_beginning else (x + padding)
+
+            xs[idx] = x
 
         return np.array(xs)
 
-    def decode(self, data: np.ndarray, row: int, show_padding: bool = None, show_start: bool = None, **kwargs) -> \
+    def decode(self, data: np.ndarray, row: int, show_padding: bool = None, show_start_end: bool = None, **kwargs) -> \
             List[str]:
         """
         Decode the given sequence representation based on this vocabulary.
         :param data: the numpy matrix of the sequence representation
         :param row: the row (instance) to be decoded
         :param show_padding: if True, padding will be represented in the sequence.
-        :param show_start: if True, `start_char` will be represented in the sequence.
+        :param show_start_end: if True, `start_char`/`end_char` will be represented in the sequence.
         :return: A list of token representing.
         """
         if show_padding is None:
             show_padding = self.default_length is not None
-        if show_start is None:
-            show_start = show_padding
+        if show_start_end is None:
+            show_start_end = self.add_start_end_indicators
         assert np.size(data, 0) > row >= 0, "Illegal row index found"
         id_sequence = data[row]
-        unpadded_sequence = np.trim_zeros(id_sequence, "f")
-        # remove start char
-        assert unpadded_sequence[0] == self.start_token_index, \
-            "Unexpected start_char '{0[0]}' found in {0}!".format(unpadded_sequence)
-        unpadded_sequence = np.delete(unpadded_sequence, 0)
-        # if self._extra_start_token:
-        #     padded_sequence = padded_sequence - 1
+        unpadded_sequence = np.trim_zeros(id_sequence, "f" if self.pad_beginning else "b")
 
-        tokens = []
-        if show_padding:
-            tokens = [self.padding_token] * (len(id_sequence) - len(unpadded_sequence) - 1)
+        assert not self.add_start_end_indicators or unpadded_sequence[0] == self.start_token_index, \
+            "Unexpected start_char '{0[0]}' found in {1}!".format(unpadded_sequence, id_sequence)
+        assert not self.add_start_end_indicators or unpadded_sequence[-1] == self.end_token_index, \
+            "Unexpected end_char '{0[-1]}' found in {1}!".format(unpadded_sequence, id_sequence)
 
-        if show_start:
-            tokens.append(self.start_token)
+        if not show_start_end and self.add_start_end_indicators:
+            num_padding = len(id_sequence) - len(unpadded_sequence)
+            unpadded_sequence = np.delete(unpadded_sequence, [0, len(unpadded_sequence)-1])
+            id_sequence = [0]*num_padding + unpadded_sequence.tolist()
 
-        tokens.extend(self.index_to_word(i) for i in unpadded_sequence)
+        if not show_padding:
+            id_sequence = unpadded_sequence
 
-        return tokens
+        return list(self.index_to_word(i) for i in id_sequence)
 
     def _decoded_to_str(self, decoded_obj: List[str]) -> str:
         return " ".join(decoded_obj)

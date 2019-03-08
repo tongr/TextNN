@@ -487,8 +487,8 @@ def test_sequence_encoder():
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence, "and"], show_progress=False)
 
-    # sentence consists of 7 words + <START> token
-    assert encoded_test_sentences.shape == (2, 8)
+    # sentence consists of 7 words + <START> + <END> token
+    assert encoded_test_sentences.shape == (2, 9)
 
     # first word is '<START>'
     assert encoded_test_sentences[0, 0] == encoder.start_token_index
@@ -506,6 +506,8 @@ def test_sequence_encoder():
     assert encoded_test_sentences[0, 6] == 7
     # eighth word is 'language' (8th most common + 4 reserved token)
     assert encoded_test_sentences[0, 7] == 11
+    # last word is '<END>'
+    assert encoded_test_sentences[0, 8] == encoder.end_token_index
 
     # padding with '<PAD>' (6 chars)
     np.testing.assert_array_equal(
@@ -515,18 +517,20 @@ def test_sequence_encoder():
     assert encoded_test_sentences[1, 6] == encoder.start_token_index
     # second word is 'and' (most common + 4 reserved token)
     assert encoded_test_sentences[1, 7] == 4
+    # last word is '<END>'
+    assert encoded_test_sentences[1, 8] == encoder.end_token_index
 
     # decode
-    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start_end=False)
     assert sequence_list == ["python", "is", "a", "<OOV>", "<OOV>", "programming", "language"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start_end=False)
     assert sequence_list == ["and"]
 
     # decode w/ control chars
-    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start=True, show_padding=True)
-    assert sequence_list == ["<START>", "python", "is", "a", "<OOV>", "<OOV>", "programming", "language"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start=True, show_padding=True)
-    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<START>", "and"]
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_padding=True)
+    assert sequence_list == ["<START>", "python", "is", "a", "<OOV>", "<OOV>", "programming", "language", "<END>"]
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_padding=True)
+    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<START>", "and", "<END>"]
 
 
 def test_sequence_encoder_limit_vocab():
@@ -539,8 +543,8 @@ def test_sequence_encoder_limit_vocab():
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence, "and"], show_progress=False)
 
-    # sentence consists of 7 words + <START> token
-    assert encoded_test_sentences.shape == (2, 8)
+    # sentence consists of 7 words + <START> token + <END> token
+    assert encoded_test_sentences.shape == (2, 9)
 
     # first word is '<START>'
     assert encoded_test_sentences[0, 0] == encoder.start_token_index
@@ -558,6 +562,8 @@ def test_sequence_encoder_limit_vocab():
     assert encoded_test_sentences[0, 6] == 7
     # eighth word is 'language' (not in the limited vocab -> OOV)
     assert encoded_test_sentences[0, 7] == encoder.oov_token_index
+    # last word is '<END>'
+    assert encoded_test_sentences[0, 8] == encoder.end_token_index
 
     # padding with '<PAD>' (6 chars)
     np.testing.assert_array_equal(
@@ -567,18 +573,20 @@ def test_sequence_encoder_limit_vocab():
     assert encoded_test_sentences[1, 6] == encoder.start_token_index
     # second word is 'and' (most common + 4 reserved token)
     assert encoded_test_sentences[1, 7] == 4
+    # last word is '<END>'
+    assert encoded_test_sentences[1, 8] == encoder.end_token_index
 
     # decode
-    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start_end=False)
     assert sequence_list == ["python", "<OOV>", "a", "<OOV>", "<OOV>", "programming", "<OOV>"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start_end=False)
     assert sequence_list == ["and"]
 
     # decode w/ control chars
-    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start=True, show_padding=True)
-    assert sequence_list == ["<START>", "python", "<OOV>", "a", "<OOV>", "<OOV>", "programming", "<OOV>"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start=True, show_padding=True)
-    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<START>", "and"]
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_padding=True)
+    assert sequence_list == ["<START>", "python", "<OOV>", "a", "<OOV>", "<OOV>", "programming", "<OOV>", "<END>"]
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_padding=True)
+    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<START>", "and", "<END>"]
 
 
 def test_sequence_encoder_limit_vocab_and_top_words():
@@ -595,8 +603,8 @@ def test_sequence_encoder_limit_vocab_and_top_words():
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence, "Python"], show_progress=False)
 
-    # sentence consists of 7 words + <START> token
-    assert encoded_test_sentences.shape == (2, 8)
+    # sentence consists of 7 words + <START> token + <END> token
+    assert encoded_test_sentences.shape == (2, 9)
 
     # first word is '<START>'
     assert encoded_test_sentences[0, 0] == encoder.start_token_index
@@ -614,6 +622,8 @@ def test_sequence_encoder_limit_vocab_and_top_words():
     assert encoded_test_sentences[0, 6] == 4
     # eighth word is 'language' (8th most common - top-3 words + 4 reserved token)
     assert encoded_test_sentences[0, 7] == 8
+    # last word is '<END>'
+    assert encoded_test_sentences[0, 8] == encoder.end_token_index
 
     # padding with '<PAD>' (6 chars)
     np.testing.assert_array_equal(
@@ -623,18 +633,20 @@ def test_sequence_encoder_limit_vocab_and_top_words():
     assert encoded_test_sentences[1, 6] == encoder.start_token_index
     # second word is 'and' (not in the limited vocab (among top-3) -> OOV)
     assert encoded_test_sentences[1, 7] == encoder.oov_token_index
+    # last word is '<END>'
+    assert encoded_test_sentences[1, 8] == encoder.end_token_index
 
     # decode
-    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start_end=False)
     assert sequence_list == ["<OOV>", "is", "<OOV>", "<OOV>", "<OOV>", "programming", "language"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start_end=False)
     assert sequence_list == ["<OOV>"]
 
     # decode w/ control chars
-    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start=True, show_padding=True)
-    assert sequence_list == ["<START>", "<OOV>", "is", "<OOV>", "<OOV>", "<OOV>", "programming", "language"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start=True, show_padding=True)
-    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<START>", "<OOV>"]
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_padding=True)
+    assert sequence_list == ["<START>", "<OOV>", "is", "<OOV>", "<OOV>", "<OOV>", "programming", "language", "<END>"]
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_padding=True)
+    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<START>", "<OOV>", "<END>"]
 
 
 def test_truncated_sequence_encoder():
@@ -655,28 +667,30 @@ def test_truncated_sequence_encoder():
     assert encoded_test_sentences[0, 2] == 10
     # fourth word is 'a' (3rd most common + 4 reserved token)
     assert encoded_test_sentences[0, 3] == 6
-    # fifth word is 'multi' (unknown -> OOV)
-    assert encoded_test_sentences[0, 4] == encoder.oov_token_index
+    # last word is '<END>'
+    assert encoded_test_sentences[0, 4] == encoder.end_token_index
 
     # padding with '<PAD>' (6 chars)
     np.testing.assert_array_equal(
-        encoded_test_sentences[1, :3],
-        np.array([encoder.padding_token_index]*3))
+        encoded_test_sentences[1, :2],
+        np.array([encoder.padding_token_index]*2))
     # first word after is '<START>'
-    assert encoded_test_sentences[1, 3] == encoder.start_token_index
+    assert encoded_test_sentences[1, 2] == encoder.start_token_index
     # second word is 'and' (most common + 4 reserved token)
-    assert encoded_test_sentences[1, 4] == 4
+    assert encoded_test_sentences[1, 3] == 4
+    # last word is '<END>'
+    assert encoded_test_sentences[1, 4] == encoder.end_token_index
 
     # decode
     sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False)
-    assert sequence_list == ["<START>", "python", "is", "a", "<OOV>"]
+    assert sequence_list == ["<START>", "python", "is", "a", "<END>"]
     sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False)
-    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<START>", "and"]
+    assert sequence_list == ["<PAD>", "<PAD>", "<START>", "and", "<END>"]
 
     # decode w/o control chars
-    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start=False, show_padding=False)
-    assert sequence_list == ["python", "is", "a", "<OOV>"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start=False, show_padding=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start_end=False, show_padding=False)
+    assert sequence_list == ["python", "is", "a"]
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start_end=False, show_padding=False)
     assert sequence_list == ["and"]
 
     # same same but with encoding specific length
@@ -691,40 +705,42 @@ def test_truncated_sequence_encoder():
     assert encoded_test_sentences[0, 1] == 5
     # third word is 'is' (7th most common + 4 reserved token)
     assert encoded_test_sentences[0, 2] == 10
-    # fourth word is 'a' (3rd most common + 4 reserved token)
-    assert encoded_test_sentences[0, 3] == 6
+    # last word is '<END>'
+    assert encoded_test_sentences[0, 3] == encoder.end_token_index
 
     # padding with '<PAD>' (6 chars)
     np.testing.assert_array_equal(
-        encoded_test_sentences[1, :2],
-        np.array([encoder.padding_token_index]*2))
+        encoded_test_sentences[1, :1],
+        np.array([encoder.padding_token_index]))
     # first word after is '<START>'
-    assert encoded_test_sentences[1, 2] == encoder.start_token_index
+    assert encoded_test_sentences[1, 1] == encoder.start_token_index
     # second word is 'and' (most common + 4 reserved token)
-    assert encoded_test_sentences[1, 3] == 4
+    assert encoded_test_sentences[1, 2] == 4
+    # last word is '<END>'
+    assert encoded_test_sentences[1, 3] == encoder.end_token_index
 
     # decode
     sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False)
-    assert sequence_list == ["<START>", "python", "is", "a"]
+    assert sequence_list == ["<START>", "python", "is", "<END>"]
     sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False)
-    assert sequence_list == ["<PAD>", "<PAD>", "<START>", "and"]
+    assert sequence_list == ["<PAD>", "<START>", "and", "<END>"]
 
     # decode w/o control chars
-    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start=False, show_padding=False)
-    assert sequence_list == ["python", "is", "a"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start=False, show_padding=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start_end=False, show_padding=False)
+    assert sequence_list == ["python", "is"]
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start_end=False, show_padding=False)
     assert sequence_list == ["and"]
 
 
 def test_padded_sequence_encoder():
-    encoder = TokenSequenceEncoder(default_length=10)
+    encoder = TokenSequenceEncoder(default_length=11)
     encoder.prepare(corpus, show_progress=False)
 
     # encode test sentence
     encoded_test_sentences = encoder.encode([test_sentence, "and"], show_progress=False)
 
     # padding to size 10 and two sentences
-    assert encoded_test_sentences.shape == (2, 10)
+    assert encoded_test_sentences.shape == (2, 11)
 
     # padding with '<PAD>' (2 chars)
     np.testing.assert_array_equal(
@@ -746,6 +762,8 @@ def test_padded_sequence_encoder():
     assert encoded_test_sentences[0, 8] == 7
     # eighth word is 'language' (8th most common + 4 reserved token)
     assert encoded_test_sentences[0, 9] == 11
+    # last word is '<END>'
+    assert encoded_test_sentences[0, 10] == encoder.end_token_index
 
     # padding with '<PAD>' (6 chars)
     np.testing.assert_array_equal(
@@ -755,18 +773,20 @@ def test_padded_sequence_encoder():
     assert encoded_test_sentences[1, 8] == encoder.start_token_index
     # second word is 'and' (most common + 4 reserved token)
     assert encoded_test_sentences[1, 9] == 4
+    # last word is '<END>'
+    assert encoded_test_sentences[1, 10] == encoder.end_token_index
 
     # decode
     sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False)
     assert sequence_list == ["<PAD>", "<PAD>", "<START>", "python", "is", "a", "<OOV>", "<OOV>", "programming",
-                             "language"]
+                             "language", "<END>"]
     sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False)
-    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<START>", "and"]
+    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<START>", "and", "<END>"]
 
     # decode w/o control chars
-    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start=False, show_padding=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start_end=False, show_padding=False)
     assert sequence_list == ["python", "is", "a", "<OOV>", "<OOV>", "programming", "language"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start=False, show_padding=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start_end=False, show_padding=False)
     assert sequence_list == ["and"]
 
 
@@ -783,47 +803,51 @@ def test_padded_sequence_encoder_limit_vocab():
     # padding to size 10 and two sentences
     assert encoded_test_sentences.shape == (2, 10)
 
-    # padding with '<PAD>' (2 chars)
+    # padding with '<PAD>' (1 chars)
     np.testing.assert_array_equal(
-        encoded_test_sentences[0, :2],
-        np.array([encoder.padding_token_index]*2))
+        encoded_test_sentences[0, :1],
+        np.array([encoder.padding_token_index]*1))
     # first word is '<START>'
-    assert encoded_test_sentences[0, 2] == encoder.start_token_index
+    assert encoded_test_sentences[0, 1] == encoder.start_token_index
     # second word is 'Python' (2nd most common + 4 reserved token)
-    assert encoded_test_sentences[0, 3] == 5
+    assert encoded_test_sentences[0, 2] == 5
     # thord word is 'is' (not in the limited vocab -> OOV)
-    assert encoded_test_sentences[0, 4] == encoder.oov_token_index
+    assert encoded_test_sentences[0, 3] == encoder.oov_token_index
     # fourth word is 'a' (3rd most common + 4 reserved token)
-    assert encoded_test_sentences[0, 5] == 6
+    assert encoded_test_sentences[0, 4] == 6
     # fifth word is 'multi' (unknown -> OOV)
-    assert encoded_test_sentences[0, 6] == encoder.oov_token_index
+    assert encoded_test_sentences[0, 5] == encoder.oov_token_index
     # sixth word is 'paradigm' (unknown -> OOV)
-    assert encoded_test_sentences[0, 7] == encoder.oov_token_index
+    assert encoded_test_sentences[0, 6] == encoder.oov_token_index
     # seventh word is 'programming' (4th most common + 4 reserved token)
-    assert encoded_test_sentences[0, 8] == 7
+    assert encoded_test_sentences[0, 7] == 7
     # eighth word is 'language' (not in the limited vocab -> OOV)
-    assert encoded_test_sentences[0, 9] == encoder.oov_token_index
+    assert encoded_test_sentences[0, 8] == encoder.oov_token_index
+    # last word is '<END>'
+    assert encoded_test_sentences[0, 9] == encoder.end_token_index
 
-    # padding with '<PAD>' (6 chars)
+    # padding with '<PAD>' (7 chars)
     np.testing.assert_array_equal(
-        encoded_test_sentences[1, :8],
-        np.array([encoder.padding_token_index]*8))
+        encoded_test_sentences[1, :7],
+        np.array([encoder.padding_token_index]*7))
     # first word after is '<START>'
-    assert encoded_test_sentences[1, 8] == encoder.start_token_index
+    assert encoded_test_sentences[1, 7] == encoder.start_token_index
     # second word is 'and' (most common + 4 reserved token)
-    assert encoded_test_sentences[1, 9] == 4
+    assert encoded_test_sentences[1, 8] == 4
+    # last word is '<END>'
+    assert encoded_test_sentences[1, 9] == encoder.end_token_index
 
     # decode
     sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False)
-    assert sequence_list == ["<PAD>", "<PAD>", "<START>", "python", "<OOV>", "a", "<OOV>", "<OOV>", "programming",
-                             "<OOV>"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start=True, show_padding=True)
-    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<START>", "and"]
+    assert sequence_list == ["<PAD>", "<START>", "python", "<OOV>", "a", "<OOV>", "<OOV>", "programming", "<OOV>",
+                             "<END>"]
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False)
+    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<START>", "and", "<END>"]
 
     # decode w/o control chars
-    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start=False, show_padding=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start_end=False, show_padding=False)
     assert sequence_list == ["python", "<OOV>", "a", "<OOV>", "<OOV>", "programming", "<OOV>"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start=False, show_padding=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start_end=False, show_padding=False)
     assert sequence_list == ["and"]
 
 
@@ -846,45 +870,166 @@ def test_padded_sequence_encoder_limit_vocab_and_top_words():
 
     # padding with '<PAD>' (2 chars)
     np.testing.assert_array_equal(
-        encoded_test_sentences[0, :2],
-        np.array([encoder.padding_token_index]*2))
+        encoded_test_sentences[0, :1],
+        np.array([encoder.padding_token_index]))
     # first word is '<START>'
-    assert encoded_test_sentences[0, 2] == encoder.start_token_index
+    assert encoded_test_sentences[0, 1] == encoder.start_token_index
     # second word is 'Python' (not in the limited vocab (among top-3) -> OOV)
-    assert encoded_test_sentences[0, 3] == encoder.oov_token_index
+    assert encoded_test_sentences[0, 2] == encoder.oov_token_index
     # third word is 'is' (7th most common - top-3 words + 4 reserved token)
-    assert encoded_test_sentences[0, 4] == 7
+    assert encoded_test_sentences[0, 3] == 7
     # fourth word is 'a' (not in the limited vocab (among top-3) -> OOV)
-    assert encoded_test_sentences[0, 5] == encoder.oov_token_index
+    assert encoded_test_sentences[0, 4] == encoder.oov_token_index
     # fifth word is 'multi' (unknown -> OOV)
-    assert encoded_test_sentences[0, 6] == encoder.oov_token_index
+    assert encoded_test_sentences[0, 5] == encoder.oov_token_index
     # sixth word is 'paradigm' (unknown -> OOV)
-    assert encoded_test_sentences[0, 7] == encoder.oov_token_index
+    assert encoded_test_sentences[0, 6] == encoder.oov_token_index
     # seventh word is 'programming' (4th most common - top-3 words + 4 reserved token)
-    assert encoded_test_sentences[0, 8] == 4
+    assert encoded_test_sentences[0, 7] == 4
     # eighth word is 'language' (8th most common - top-3 words + 4 reserved token)
-    assert encoded_test_sentences[0, 9] == 8
+    assert encoded_test_sentences[0, 8] == 8
+    # last word is '<END>'
+    assert encoded_test_sentences[0, 9] == encoder.end_token_index
 
     # padding with '<PAD>' (6 chars)
     np.testing.assert_array_equal(
-        encoded_test_sentences[1, :8],
-        np.array([encoder.padding_token_index]*8))
+        encoded_test_sentences[1, :7],
+        np.array([encoder.padding_token_index]*7))
     # first word after is '<START>'
-    assert encoded_test_sentences[1, 8] == encoder.start_token_index
+    assert encoded_test_sentences[1, 7] == encoder.start_token_index
     # second word is 'and' (not in the limited vocab (among top-3) -> OOV)
+    assert encoded_test_sentences[1, 8] == encoder.oov_token_index
+    # last word is '<END>'
+    assert encoded_test_sentences[1, 9] == encoder.end_token_index
+
+    # decode
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False)
+    assert sequence_list == ["<PAD>", "<START>", "<OOV>", "is", "<OOV>", "<OOV>", "<OOV>", "programming",
+                             "language", "<END>"]
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False)
+    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<START>", "<OOV>", "<END>"]
+
+    # decode w/o control chars
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start_end=False, show_padding=False)
+    assert sequence_list == ["<OOV>", "is", "<OOV>", "<OOV>", "<OOV>", "programming", "language"]
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start_end=False, show_padding=False)
+    assert sequence_list == ["<OOV>"]
+
+
+def test_padded_sequence_encoder_limit_vocab_and_top_words_no_start_end_token():
+    # build a vocab of size 22 including:
+    #  - reserved token <PAD>, <OOV>, <START>, and <END>
+    #  - plus the top 6 words in the corpus:
+    #      programming(3), has(3), the(3), is(2), language(2), by(2), van(2), rossum(2), in(2), that(2), it(2),
+    #      large(2), community(2), as(2), are(2), cpython(2), of(2), software(2)
+    #  - ignored words (top 3): and(8), python(7), a(4)
+
+    encoder = TokenSequenceEncoder(default_length=10, skip_top_words=3, limit_vocabulary=22,
+                                   add_start_end_indicators=False)
+    encoder.prepare(corpus, show_progress=False)
+
+    # encode test sentence
+    encoded_test_sentences = encoder.encode([test_sentence, "Python"], show_progress=False)
+
+    # padding to size 10 and two sentences
+    assert encoded_test_sentences.shape == (2, 10)
+
+    # padding with '<PAD>' (3 token)
+    np.testing.assert_array_equal(
+        encoded_test_sentences[0, :3],
+        np.array([encoder.padding_token_index]*3))
+    # first word is 'Python' (not in the limited vocab (among top-3) -> OOV)
+    assert encoded_test_sentences[0, 3] == encoder.oov_token_index
+    # second word is 'is' (7th most common - top-3 words + 4 reserved token)
+    assert encoded_test_sentences[0, 4] == 7
+    # third word is 'a' (not in the limited vocab (among top-3) -> OOV)
+    assert encoded_test_sentences[0, 5] == encoder.oov_token_index
+    # fourth word is 'multi' (unknown -> OOV)
+    assert encoded_test_sentences[0, 6] == encoder.oov_token_index
+    # fifth word is 'paradigm' (unknown -> OOV)
+    assert encoded_test_sentences[0, 7] == encoder.oov_token_index
+    # sixth word is 'programming' (4th most common - top-3 words + 4 reserved token)
+    assert encoded_test_sentences[0, 8] == 4
+    # seventh word is 'language' (8th most common - top-3 words + 4 reserved token)
+    assert encoded_test_sentences[0, 9] == 8
+
+    # padding with '<PAD>' (9 token)
+    np.testing.assert_array_equal(
+        encoded_test_sentences[1, :9],
+        np.array([encoder.padding_token_index]*9))
+    # first word is 'and' (not in the limited vocab (among top-3) -> OOV)
     assert encoded_test_sentences[1, 9] == encoder.oov_token_index
 
     # decode
     sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False)
-    assert sequence_list == ["<PAD>", "<PAD>", "<START>", "<OOV>", "is", "<OOV>", "<OOV>", "<OOV>", "programming",
+    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<OOV>", "is", "<OOV>", "<OOV>", "<OOV>", "programming",
                              "language"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start=True, show_padding=True)
-    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<START>", "<OOV>"]
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False)
+    assert sequence_list == ["<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<OOV>"]
 
     # decode w/o control chars
-    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_start=False, show_padding=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_padding=False)
     assert sequence_list == ["<OOV>", "is", "<OOV>", "<OOV>", "<OOV>", "programming", "language"]
-    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_start=False, show_padding=False)
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_padding=False)
+    assert sequence_list == ["<OOV>"]
+
+
+def test_padded_sequence_encoder_limit_vocab_and_top_words_no_start_end_token_pad_end():
+    # build a vocab of size 22 including:
+    #  - reserved token <PAD>, <OOV>, <START>, and <END>
+    #  - plus the top 6 words in the corpus:
+    #      programming(3), has(3), the(3), is(2), language(2), by(2), van(2), rossum(2), in(2), that(2), it(2),
+    #      large(2), community(2), as(2), are(2), cpython(2), of(2), software(2)
+    #  - ignored words (top 3): and(8), python(7), a(4)
+
+    encoder = TokenSequenceEncoder(default_length=10, skip_top_words=3, limit_vocabulary=22,
+                                   add_start_end_indicators=False, pad_beginning=False)
+    encoder.prepare(corpus, show_progress=False)
+
+    # encode test sentence
+    encoded_test_sentences = encoder.encode([test_sentence, "Python"], show_progress=False)
+
+    # padding to size 10 and two sentences
+    assert encoded_test_sentences.shape == (2, 10)
+
+    # first word is 'Python' (not in the limited vocab (among top-3) -> OOV)
+    assert encoded_test_sentences[0, 0] == encoder.oov_token_index
+    # second word is 'is' (7th most common - top-3 words + 4 reserved token)
+    assert encoded_test_sentences[0, 1] == 7
+    # third word is 'a' (not in the limited vocab (among top-3) -> OOV)
+    assert encoded_test_sentences[0, 2] == encoder.oov_token_index
+    # fourth word is 'multi' (unknown -> OOV)
+    assert encoded_test_sentences[0, 3] == encoder.oov_token_index
+    # fifth word is 'paradigm' (unknown -> OOV)
+    assert encoded_test_sentences[0, 4] == encoder.oov_token_index
+    # sixth word is 'programming' (4th most common - top-3 words + 4 reserved token)
+    assert encoded_test_sentences[0, 5] == 4
+    # seventh word is 'language' (8th most common - top-3 words + 4 reserved token)
+    assert encoded_test_sentences[0, 6] == 8
+
+    # padding with '<PAD>' (3 token)
+    np.testing.assert_array_equal(
+        encoded_test_sentences[0, -3:],
+        np.array([encoder.padding_token_index]*3))
+
+    # first word is 'and' (not in the limited vocab (among top-3) -> OOV)
+    assert encoded_test_sentences[1, 0] == encoder.oov_token_index
+    # padding with '<PAD>' (9 chars)
+    np.testing.assert_array_equal(
+        encoded_test_sentences[1, -9:],
+        np.array([encoder.padding_token_index]*9))
+
+    # decode
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False)
+    assert sequence_list == ["<OOV>", "is", "<OOV>", "<OOV>", "<OOV>", "programming", "language", "<PAD>", "<PAD>",
+                             "<PAD>"]
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False)
+    assert sequence_list == ["<OOV>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>", "<PAD>"]
+
+    # decode w/o control chars
+    sequence_list = encoder.decode(encoded_test_sentences, 0, show_progress=False, show_padding=False)
+    assert sequence_list == ["<OOV>", "is", "<OOV>", "<OOV>", "<OOV>", "programming", "language"]
+    sequence_list = encoder.decode(encoded_test_sentences, 1, show_progress=False, show_padding=False)
     assert sequence_list == ["<OOV>"]
 
 
