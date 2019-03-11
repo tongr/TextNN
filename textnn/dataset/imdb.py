@@ -117,6 +117,7 @@ def imdb_data_generator(base_folder, pos_only: bool = None, train_only: bool = N
 
 class ImdbClassifier:
     def __init__(self, data_folder, vocabulary_size: int = 4096, max_text_length: int = 512,
+                 pad_beginning: bool = True, use_start_end_indicators: bool = True,
                  embeddings: Union[int, str, PurePath] = 32, update_embeddings: bool = True,
                  layer_definitions: str = None,
                  batch_size: int = 1024, num_epochs: int = 25, learning_rate: float = 0.001, learning_decay: float = 0.,
@@ -125,9 +126,12 @@ class ImdbClassifier:
                  ):
         """
 
-        :param data_folder:
+        :param data_folder: the folder containing the IMDb dataset
         :param vocabulary_size: size of the input vocabulary
-        :param max_text_length:
+        :param max_text_length: the maximum amount of token to konsider during sequence encoding
+        :param pad_beginning: if True, add padding at start and end of an encoded token sequence
+        :param use_start_end_indicators: if True, use reserved indicator token `<START>` and `<END>` during token
+        sequence encoding
         :param embeddings: either the size of the embedding layer or the path to a vector file containing pretrained
         embeddings
         :param update_embeddings: if False, the embedding layer will not be updated during training (i.e., for
@@ -154,6 +158,8 @@ class ImdbClassifier:
         self._data_folder: Path = data_folder if isinstance(data_folder, PurePath) else Path(data_folder)
         self._vocabulary_size = vocabulary_size
         self._max_text_length = max_text_length
+        self._use_start_end_indicators = use_start_end_indicators
+        self._pad_beginning = pad_beginning
         # the embeddings parameter can be both: size of a (not yet trained) layer or a file with pretrained embeddings
         self._embeddings: Union[int, str, PurePath] = embeddings
         self._update_embeddings: bool = update_embeddings
@@ -322,6 +328,8 @@ class ImdbClassifier:
             "sequences",
             f"vocab{self._vocabulary_size}",
             f"pad{self._max_text_length}" if self._max_text_length else None,
+            "pad_end" if not self._pad_beginning else None,
+            "show_start_and_end" if not self._use_start_end_indicators else None,
         ])
 
     @property
@@ -416,7 +424,10 @@ class ImdbClassifier:
             training_data=training_data,
             initialized_text_enc=TokenSequenceEncoder(
                 limit_vocabulary=self._vocabulary_size,
-                default_length=self._max_text_length),
+                default_length=self._max_text_length,
+                pad_beginning=self._pad_beginning,
+                add_start_end_indicators=self._use_start_end_indicators,
+            ),
         )
 
         # extract data vectors (from training data)

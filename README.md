@@ -53,7 +53,9 @@ python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] train-and-test
 ```
 where `[IMDB_DATA_FOLDER]` refers to the base folder of the ACL IMDb dataset. Further optional arguments will influence
 the following areas:
- - text encoding settings `--vocabulary-size [VOCABULARY_SIZE]` and `--max-text-length [MAX_TEXT_LENGTH]`
+ - text encoding settings: `--vocabulary-size [VOCABULARY_SIZE]`, `--max-text-length [MAX_TEXT_LENGTH]`,
+   `--pad-beginning [True|False]` (whether to add padding at start and end of a sequence), and
+   `--use-start-end-indicators [True|False]` (whether to use reserved indicator token `<START>` and `<END>`)
  - embedding setup: `--embeddings [EMBEDDING_SIZE|PRETRAINED_EMBEDDINGS_FILE]` (`--update-embeddings [True|False]`)
  - network structure `--layer_definitions [LAYER_DEFINITIONS]` (layer definitions separated by pipe, e.g.,
    `--layer-definitions 'LSTM(16)|Dense(8)'`)
