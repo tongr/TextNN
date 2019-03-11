@@ -117,8 +117,7 @@ def imdb_data_generator(base_folder, pos_only: bool = None, train_only: bool = N
 
 class ImdbClassifier:
     def __init__(self, data_folder, vocabulary_size: int = 4096, max_text_length: int = 512,
-                 embedding_size: int = 32,
-                 pretrained_embeddings_file=None, embed_reserved: bool = True, retrain_embedding_matrix: bool = False,
+                 embeddings: Union[int, str, PurePath] = 32, update_embeddings: bool = True,
                  layer_definitions: str = None,
                  batch_size: int = 1024, num_epochs: int = 25, learning_rate: float = 0.001, learning_decay: float = 0.,
                  shuffle_training_data: Union[int, bool] = 113, validation_split: float = .05,
@@ -129,11 +128,10 @@ class ImdbClassifier:
         :param data_folder:
         :param vocabulary_size: size of the input vocabulary
         :param max_text_length:
-        :param embedding_size: size of the embedding layer (is ignored in case `embedding_matrix` is set)
-        :param pretrained_embeddings_file:
-        :param embed_reserved:
-        :param retrain_embedding_matrix: continue training the pre-trained embedding matrix (in case `embedding_matrix`
-        is specified)
+        :param embeddings: either the size of the embedding layer or the path to a vector file containing pretrained
+        embeddings
+        :param update_embeddings: if False, the embedding layer will not be updated during training (i.e., for
+        pretrained embeddings)
         :param layer_definitions: additional layer definitions downstream the embeddings
         :param batch_size: Number of samples per gradient update
         :param learning_rate: Learning rate
@@ -156,13 +154,9 @@ class ImdbClassifier:
         self._data_folder: Path = data_folder if isinstance(data_folder, PurePath) else Path(data_folder)
         self._vocabulary_size = vocabulary_size
         self._max_text_length = max_text_length
-        self._embedding_size = embedding_size
-        if pretrained_embeddings_file:
-            pretrained_embeddings_file = pretrained_embeddings_file if isinstance(pretrained_embeddings_file, PurePath)\
-                else Path(pretrained_embeddings_file)
-        self._pretrained_embeddings_file: Path = pretrained_embeddings_file
-        self._retrain_embedding_matrix: bool = retrain_embedding_matrix
-        self._embed_reserved = embed_reserved
+        # the embeddings parameter can be both: size of a (not yet trained) layer or a file with pretrained embeddings
+        self._embeddings: Union[int, str, PurePath] = embeddings
+        self._update_embeddings: bool = update_embeddings
         self._batch_size = batch_size
         self._num_epochs = num_epochs
         self._learning_rate = learning_rate
@@ -336,10 +330,11 @@ class ImdbClassifier:
         return self._encoder_folder / join_name([
             # create name by joining all of the following elements (remove empty strings / None)
             "sequential",
-            f"emb{self._embedding_size}" if not self._pretrained_embeddings_file else "pretrained-embeddings-{}".format(
-                hashlib.md5(open(str(self._pretrained_embeddings_file), "rb").read()).hexdigest()),
-            f"retrained" if self._pretrained_embeddings_file and self._retrain_embedding_matrix else None,
-            "embed-reserved" if self._pretrained_embeddings_file and self._embed_reserved else None,
+            # if `self._embeddings` is an integer, we use it as embedding layer size, otherwise we try to identify a the
+            # file with pretrained embeddings
+            f"{self._embeddings}" if isinstance(self._embeddings, int) else "pretrained-embeddings{}".format(
+                hashlib.md5(open(str(self._embeddings), "rb").read()).hexdigest()),
+            "update-embeddings" if self._update_embeddings else None,
             "layers-{}".format("-".join(self._layer_definitions)),
         ])
 
@@ -601,19 +596,24 @@ class ImdbClassifier:
 
         # load encoders and encode training data
         embedding_matcher = None
-        if self._pretrained_embeddings_file and self._pretrained_embeddings_file.exists():
-            embedding_matcher = VectorFileEmbeddingMatcher(fasttext_vector_file=self._pretrained_embeddings_file,
-                                                           encode_reserved_words=self._embed_reserved,
+        if not isinstance(self._embeddings, int):
+            embedding_matcher = VectorFileEmbeddingMatcher(fasttext_vector_file=self._embeddings,
+                                                           encode_reserved_words=not self._update_embeddings,
                                                            )
+
             # match embeddings with text/token encoder
             embedding_matcher.reload_embeddings(token_encoder=self._text_enc, show_progress=True)
 
         # first layer: embedding
         if embedding_matcher is not None:
-            model.add(Embedding(input_dim=self._vocabulary_size, output_dim=embedding_matcher.embedding_matrix.shape[1],
-                                weights=[embedding_matcher.embedding_matrix], trainable=self._retrain_embedding_matrix))
+            model.add(Embedding(input_dim=self._vocabulary_size,
+                                output_dim=embedding_matcher.embedding_matrix.shape[1],
+                                trainable=self._update_embeddings,
+                                weights=[embedding_matcher.embedding_matrix]))
         else:
-            model.add(Embedding(input_dim=self._vocabulary_size, output_dim=self._embedding_size))
+            model.add(Embedding(input_dim=self._vocabulary_size,
+                                output_dim=self._embeddings,
+                                trainable=self._update_embeddings))
 
         # further layers ...
         if self._layers:
