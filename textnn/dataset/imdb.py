@@ -8,7 +8,7 @@ from typing import List, Tuple, Union, Iterable, Any
 
 from keras import Sequential
 from keras.backend import clear_session as clear_keras_session
-from keras.callbacks import History, CSVLogger
+from keras.callbacks import CSVLogger
 from keras.layers import *
 from keras.models import save_model, load_model
 from keras.optimizers import Adam
@@ -121,7 +121,7 @@ class ImdbClassifier:
                  embeddings: Union[int, str, PurePath] = 32, update_embeddings: bool = True,
                  layer_definitions: str = None,
                  batch_size: int = 1024, num_epochs: int = 25, learning_rate: float = 0.001, learning_decay: float = 0.,
-                 shuffle_training_data: Union[int, bool] = 113, validation_split: float = .05,
+                 shuffle_training_data: Union[int, bool] = 113,
                  log_config: bool = True,
                  ):
         """
@@ -145,14 +145,6 @@ class ImdbClassifier:
         :param shuffle_training_data: shuffle the training to avoid problems in input order (e.g., if data is sorted by
         label). If `shuffle_data=False`, the data will not be shuffled, if `shuffle_data=True`, the data will be
         shuffled randomly, if `shuffle_data` is an integer, this value will be used as seed for the random function.
-        :param validation_split: Float between 0 and 1. Fraction of the training data to be used as validation data. The
-        model will set apart this fraction of the training data, will not train on it, and will evaluate the loss and
-        any model metrics on this data at the end of each epoch. The validation data is selected from the last samples
-        in the `x` and `y` data provided, before shuffling.
-        :param validation_split: Float between 0 and 1. Fraction of the training data to be used as validation data. The
-        model will set apart this fraction of the training data, will not train on it, and will evaluate the loss and
-        any model metrics on this data at the end of each epoch. The validation data is selected from the last samples
-        in the `x` and `y` data provided, before shuffling.
         :param log_config: if True a the config of this instance is printed after setup
         """
         self._data_folder: Path = data_folder if isinstance(data_folder, PurePath) else Path(data_folder)
@@ -168,7 +160,6 @@ class ImdbClassifier:
         self._learning_rate = learning_rate
         self._learning_decay = learning_decay
         self._shuffle_training_data = shuffle_training_data
-        self._validation_split = validation_split
 
         self._model: Sequential = None
         self._text_enc: AbstractTokenEncoder = None
@@ -181,7 +172,17 @@ class ImdbClassifier:
     #
     # public methods
     #
-    def train_and_test(self):
+    def train_and_test(self, validation_split: float = .05):
+        """
+        Train a model (using epoch validation based on `validation_split`) and test it's performance on the independent
+        data test set.
+        :param validation_split: Float between 0 and 1. Fraction of the training data to be used as validation data. The
+        model will set apart this fraction of the training data, will not train on it, and will evaluate the loss and
+        any model metrics on this data at the end of each epoch. The validation data is selected from the last samples
+        in the `x` and `y` data provided, before shuffling.
+        """
+        if validation_split:
+            self._experiment_folder /= f"validation-split-{validation_split}"
         #
         # training
         #
@@ -203,17 +204,17 @@ class ImdbClassifier:
         text_list = list(tex for tex, lab in training_data)
         x_train: np.ndarray = self._text_enc.encode(texts=text_list)
 
-        # cleanup memory
-        del text_list
-        gc.collect()
-
         # prepare training labels
         y_train: np.ndarray = self._label_enc.make_categorical(labeled_data=training_data)
+
+        # cleanup
+        del training_data, text_list
 
         # load or train model
         self._train_or_load_model(x_train, y_train)
 
-        del training_data, text_list, x_train, y_train
+        # cleanup memory
+        del x_train, y_train
         gc.collect()
 
         #
@@ -255,6 +256,7 @@ class ImdbClassifier:
         return "\n".join(f"  {key}: {value}" for key, value in sorted(self._config_parameters))
 
     def cross_validation(self, k: int = 10):
+        self._experiment_folder /= f"{k}-fold-cross-validation"
         # get training data
         data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
 
@@ -290,18 +292,16 @@ class ImdbClassifier:
         results = []
         histories = []
         for fold_idx, (train_instances, test_instances) in enumerate(k_fold.split(x, y_class_labels)):
-            # clean keras/tensorflow backend
-            # clear_keras_session()
             logging.info(f"Validating fold {fold_idx + 1} of {k}")
             fold_config = copy(self)
-            fold_config._validation_split = None
-            fold_config._experiment_folder = self._experiment_folder / f"fold_{fold_idx}"
+            fold_config._experiment_folder /= f"fold_{fold_idx + 1}"
 
             # split training and validation data and train model
             fold_config._train_or_load_model(
                 x[train_instances], y[train_instances], validation_data=(x[test_instances], y[test_instances]))
 
             results.append(fold_config._validate_model(x=x[test_instances], y=y[test_instances]))
+            # noinspection PyUnresolvedReferences
             histories.append(copy(fold_config._model.history.history))
 
         # collect results and build statistics
@@ -399,12 +399,19 @@ class ImdbClassifier:
             f"decay{self._learning_decay}" if self._learning_decay else None,
             None if self._shuffle_training_data is False else "shuffle" if self._shuffle_training_data is True
             else f"shuffle{self._shuffle_training_data}",
-            f"validation-split{self._validation_split}" if self._validation_split else None,
         ])
 
     @_experiment_folder.setter
     def _experiment_folder(self, value):
         self.__dict__["__experiment_folder"] = value
+
+    def reset(self):
+        self._text_enc, self._label_enc = None, None
+        self._model = None
+        del self.__dict__["__experiment_folder"]
+        # clean keras/tensorflow backend
+        clear_keras_session()
+        gc.collect()
 
     #
     # preparation
@@ -531,6 +538,7 @@ class ImdbClassifier:
                              x: np.ndarray, y: np.ndarray,
                              validation_data: Union[Tuple[np.ndarray, np.ndarray],
                                                     Tuple[np.ndarray, np.ndarray, Any]] = None,
+                             validation_split: float = 0.,
                              ) -> None:
         """
         Train a or load a `Sequential` model for text classification tasks
@@ -539,6 +547,10 @@ class ImdbClassifier:
         :param validation_data: tuple `(x_val, y_val)` or tuple `(x_val, y_val, val_sample_weights)` on which to
         evaluate the loss and any model metrics at the end of each epoch. The model will not be trained on this data.
         `validation_data` will override `validation_split`.
+        :param validation_split: Float between 0 and 1. Fraction of the training data to be used as validation data. The
+        model will set apart this fraction of the training data, will not train on it, and will evaluate the loss and
+        any model metrics on this data at the end of each epoch. The validation data is selected from the last samples
+        in the `x` and `y` data provided, before shuffling.
         :return: the trained (fitted) model
         """
         assert len(x) == len(y), \
@@ -580,7 +592,7 @@ class ImdbClassifier:
 
                 # start the training (fit the model to the data)
                 model.fit(x=x, y=y,
-                          shuffle=False, validation_split=self._validation_split, validation_data=validation_data,
+                          shuffle=False, validation_split=validation_split, validation_data=validation_data,
                           batch_size=self._batch_size, epochs=self._num_epochs,
                           callbacks=[CSVLogger(str(csv_log), append=False, separator=';')])
             except KeyboardInterrupt:

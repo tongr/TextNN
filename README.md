@@ -49,10 +49,13 @@ The ACL IMDb dataset consists of 25,000 highly polar movie reviews for training,
 
 To run training and evaluation of a LSTM model to predict positive/negative reviews run:
 ```bash
-python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] train-and-test
+python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] train-and-test [--validation-split VALIDATION_HOLD_OUT_RATIO]
 ```
-where `[IMDB_DATA_FOLDER]` refers to the base folder of the ACL IMDb dataset. Further optional arguments will influence
-the following areas:
+where `[IMDB_DATA_FOLDER]` refers to the base folder of the ACL IMDb dataset and the optional
+`VALIDATION_HOLD_OUT_RATIO` (default `0.05`) specified how much data will be hold back for epoch validation during
+training.
+
+Further optional arguments `[OPT_ARGS]` will influence the following areas:
  - text encoding settings: `--vocabulary-size [VOCABULARY_SIZE]`, `--max-text-length [MAX_TEXT_LENGTH]`,
    `--pad-beginning [True|False]` (whether to add padding at start and end of a sequence), and
    `--use-start-end-indicators [True|False]` (whether to use reserved indicator token `<START>` and `<END>`)
@@ -66,16 +69,17 @@ the following areas:
 
 To debug the selected encoding model run:
 ```bash
-python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] test-encoding "This is a test sentence" \
+python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] test-encoding "This is a test sentence" \
     "This sentence contains the unknown word klncusuvhacccuuandjccbeddusskxhduscj"
 ```
-Aforementioned optional arguments still apply.
+Aforementioned optional arguments `[OPT_ARGS]` still apply.
 
 
 To execute *k*-fold cross validation based only on the training data set
 ```bash
-python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] cross-validation [--log-config NUMBER_OF_FOLDS]
+python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] cross-validation [--log-config NUMBER_OF_FOLDS]
 ```
+Aforementioned optional arguments `[OPT_ARGS]` still apply.
 
 
 ### Pretrained word embeddings
