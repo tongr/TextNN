@@ -182,14 +182,43 @@ class ImdbClassifier:
     # public methods
     #
     def train_and_test(self):
+        #
+        # training
+        #
         # get training data
         training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
-        # prepare the model
-        self._train_or_load_model_and_encoders(training_data)
 
-        del training_data
+        # prepare the encoders
+        self._prepare_or_load_encoders(
+            training_data=training_data,
+            initialized_text_enc=TokenSequenceEncoder(
+                limit_vocabulary=self._vocabulary_size,
+                default_length=self._max_text_length,
+                pad_beginning=self._pad_beginning,
+                add_start_end_indicators=self._use_start_end_indicators,
+            ),
+        )
+
+        # extract data vectors (from training data)
+        text_list = list(tex for tex, lab in training_data)
+        x_train: np.ndarray = self._text_enc.encode(texts=text_list)
+
+        # cleanup memory
+        del text_list
         gc.collect()
 
+        # prepare training labels
+        y_train: np.ndarray = self._label_enc.make_categorical(labeled_data=training_data)
+
+        # load or train model
+        self._train_or_load_model(x_train, y_train)
+
+        del training_data, text_list, x_train, y_train
+        gc.collect()
+
+        #
+        # testing
+        #
         # extract test data
         test_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=False))
         # evaluate the performance of the model
@@ -206,8 +235,16 @@ class ImdbClassifier:
         # get training data
         training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
 
-        # prepare the model
-        self._train_or_load_model_and_encoders(training_data)
+        # prepare the encoders
+        self._prepare_or_load_encoders(
+            training_data=training_data,
+            initialized_text_enc=TokenSequenceEncoder(
+                limit_vocabulary=self._vocabulary_size,
+                default_length=self._max_text_length,
+                pad_beginning=self._pad_beginning,
+                add_start_end_indicators=self._use_start_end_indicators,
+            ),
+        )
 
         # debug the text encoder
         logging.info(f"Trying to encode the following texts: {texts}")
@@ -221,8 +258,8 @@ class ImdbClassifier:
         # get training data
         data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
 
-        # prepare encoder and encode training data
-        self._text_enc, self._label_enc = self._prepare_or_load_encoders(
+        # prepare the encoders
+        self._prepare_or_load_encoders(
             training_data=data,
             initialized_text_enc=TokenSequenceEncoder(
                 limit_vocabulary=self._vocabulary_size,
@@ -257,10 +294,12 @@ class ImdbClassifier:
             # clear_keras_session()
             logging.info(f"Validating fold {fold_idx + 1} of {k}")
             fold_config = copy(self)
+            fold_config._validation_split = None
             fold_config._experiment_folder = self._experiment_folder / f"fold_{fold_idx}"
+
             # split training and validation data and train model
-            fold_config._model = fold_config._train_model(x[train_instances], y[train_instances],
-                                                          validation_data=(x[test_instances], y[test_instances]))
+            fold_config._train_or_load_model(
+                x[train_instances], y[train_instances], validation_data=(x[test_instances], y[test_instances]))
 
             results.append(fold_config._validate_model(x=x[test_instances], y=y[test_instances]))
             histories.append(copy(fold_config._model.history.history))
@@ -374,7 +413,7 @@ class ImdbClassifier:
     def _prepare_or_load_encoders(self,
                                   training_data: List[Tuple[str, int]],
                                   initialized_text_enc: AbstractTokenEncoder,
-                                  ) -> Tuple[AbstractTokenEncoder, LabelEncoder]:
+                                  ) -> None:
         if not self._encoder_folder.exists():
             self._encoder_folder.mkdir(parents=True, exist_ok=True)
 
@@ -411,40 +450,11 @@ class ImdbClassifier:
             del text_list
             gc.collect()
 
-        return text_enc, label_enc
+        self._text_enc, self._label_enc = text_enc, label_enc
 
     #
-    # prepare model
+    # plotting utils
     #
-    def _train_or_load_model_and_encoders(self, training_data: List[Tuple[str, int]]) -> Tuple[Sequential,
-                                                                                               AbstractTokenEncoder,
-                                                                                               LabelEncoder]:
-        # prepare encoder and encode training data
-        self._text_enc, self._label_enc = self._prepare_or_load_encoders(
-            training_data=training_data,
-            initialized_text_enc=TokenSequenceEncoder(
-                limit_vocabulary=self._vocabulary_size,
-                default_length=self._max_text_length,
-                pad_beginning=self._pad_beginning,
-                add_start_end_indicators=self._use_start_end_indicators,
-            ),
-        )
-
-        # extract data vectors (from training data)
-        text_list = list(tex for tex, lab in training_data)
-        x_train: np.ndarray = self._text_enc.encode(texts=text_list)
-
-        # cleanup memory
-        del text_list
-        gc.collect()
-
-        # prepare training labels
-        y_train: np.ndarray = self._label_enc.make_categorical(labeled_data=training_data)
-
-        # load or train model
-        self._model = self._train_or_load_model(x_train, y_train)
-        return self._model, self._text_enc, self._label_enc
-
     def _plot_cross_validation_stats(self, hist_stats: dict, measure: str, longname: str = None):
         def get_values(stat_name, m=measure):
             return list(hist_stats[m][idx][stat_name] if idx in hist_stats[m] else None
@@ -485,43 +495,54 @@ class ImdbClassifier:
         self._plot_cross_validation_stats(hist_stats, "mean_squared_error", "MSE")
         self._plot_cross_validation_stats(hist_stats, "loss", "Cross Entropy")
 
-    def _plot_training_stats(self, history: History):
+    def _plot_training_stats(self, history_data: dict):
         # plot accuracy
-        y_series = [("Training", history.history["acc"])]
-        if "val_acc" in history.history:
-            y_series.append(("Validation", history.history["val_acc"]))
+        y_series = [("Training", history_data["acc"])]
+        if "val_acc" in history_data:
+            y_series.append(("Validation", history_data["val_acc"]))
         plot_to_file(
             file=self._experiment_folder / "accuracy.pdf",
             x_values=list(range(self._num_epochs)), y_series=y_series,
             title="Training and Validation Accuracy", x_label="Epochs", y_label="Accuracy",
         )
         # plot MSE
-        y_series = [("Training", history.history["mean_squared_error"])]
-        if "val_mean_squared_error" in history.history:
-            y_series.append(("Validation", history.history["val_mean_squared_error"]))
+        y_series = [("Training", history_data["mean_squared_error"])]
+        if "val_mean_squared_error" in history_data:
+            y_series.append(("Validation", history_data["val_mean_squared_error"]))
         plot_to_file(
             file=self._experiment_folder / "mse.pdf",
             x_values=list(range(self._num_epochs)), y_series=y_series,
             title="Training and Validation Mean Squared Error", x_label="Epochs", y_label="MSE",
         )
         # plot loss
-        y_series = [("Training", history.history['loss'])]
-        if "val_loss" in history.history:
-            y_series.append(("Validation", history.history["val_loss"]))
+        y_series = [("Training", history_data['loss'])]
+        if "val_loss" in history_data:
+            y_series.append(("Validation", history_data["val_loss"]))
         plot_to_file(
             file=self._experiment_folder / "cross_entropy.pdf",
             x_values=list(range(self._num_epochs)), y_series=y_series,
             title="Training and Validation Cross Entropy", x_label="Epochs", y_label="Cross Entropy",
         )
 
-    def _train_or_load_model(self, x_train: np.ndarray, y_train: np.ndarray) -> Sequential:
+    #
+    # prepare model
+    #
+    def _train_or_load_model(self,
+                             x: np.ndarray, y: np.ndarray,
+                             validation_data: Union[Tuple[np.ndarray, np.ndarray],
+                                                    Tuple[np.ndarray, np.ndarray, Any]] = None,
+                             ) -> None:
         """
         Train a or load a `Sequential` model for text classification tasks
-        :param x_train: training data
-        :param y_train: training labels
+        :param x: training data
+        :param y: training labels
+        :param validation_data: tuple `(x_val, y_val)` or tuple `(x_val, y_val, val_sample_weights)` on which to
+        evaluate the loss and any model metrics at the end of each epoch. The model will not be trained on this data.
+        `validation_data` will override `validation_split`.
         :return: the trained (fitted) model
         """
-        assert len(x_train) == len(y_train), "The x and y data matrices need to contain the same number of instances!"
+        assert len(x) == len(y), \
+            f"The x and y data matrices need to contain the same number of instances (actual: {len(x)} and {len(y)})!"
         model_file = self._experiment_folder / "keras-model.hd5"
 
         model: Sequential = None
@@ -530,69 +551,58 @@ class ImdbClassifier:
             model: Sequential = load_model(str(model_file))
 
         if not model:
+            #
             # train the model
-            model: Sequential = self._train_model(x=x_train, y=y_train)
+            #
+            # prepare data (shuffle, i.e., sorted data)
+            if self._shuffle_training_data is not False:
+                if self._shuffle_training_data is not True:
+                    # assume `shuffle_training_data` contains the random seed
+                    np.random.seed(self._shuffle_training_data)
+                indices = np.arange(len(x))
+                np.random.shuffle(indices)
+                x = x[indices]
+                y = y[indices]
+
+            # create a sequential model
+            model, loss = self._setup_model(y=y)
+            model.compile(loss=loss,
+                          optimizer=Adam(lr=self._learning_rate, decay=self._learning_decay),
+                          metrics=['accuracy', 'mean_squared_error'],
+                          )
+
+            # run training and catch Ctrl+C to create plots etc anyway
+            try:
+                # prepare training progress CSV
+                if not self._experiment_folder.exists():
+                    self._experiment_folder.mkdir(parents=True, exist_ok=True)
+                csv_log = self._experiment_folder / "epoch_results.csv"
+
+                # start the training (fit the model to the data)
+                model.fit(x=x, y=y,
+                          shuffle=False, validation_split=self._validation_split, validation_data=validation_data,
+                          batch_size=self._batch_size, epochs=self._num_epochs,
+                          callbacks=[CSVLogger(str(csv_log), append=False, separator=';')])
+            except KeyboardInterrupt:
+                logging.warning(f"KeyboardInterrupt: Interrupting model fit ...")
 
             # noinspection PyUnresolvedReferences
-            if self._num_epochs <= len(model.history.history['loss']):
-                # if the training finished: serialize data for next time
-                save_model(model, filepath=str(model_file))
+            history_data: dict = model.history.history if model and model.history else None
+
+            if history_data:
+                # plot training progress
+                self._plot_training_stats(history_data)
+
+                # serialize model iff the training finished (was not interrupted)
+                if self._num_epochs <= len(history_data['loss']):
+                    # if the training finished: serialize data for next time
+                    save_model(model, filepath=str(model_file))
+
+            gc.collect()
 
         model.summary()
 
-        return model
-
-    def _train_model(self,
-                     x: np.ndarray, y: np.ndarray,
-                     validation_data: Union[Tuple[np.ndarray, np.ndarray],
-                                            Tuple[np.ndarray, np.ndarray, Any]] = None,
-                     ) -> Sequential:
-        """
-        Train a `Sequential` model for text classification tasks
-        :param x: training data
-        :param y: training labels
-        :param validation_data: tuple `(x_val, y_val)` or tuple `(x_val, y_val, val_sample_weights)` on which to
-        evaluate the loss and any model metrics at the end of each epoch. The model will not be trained on this data.
-        `validation_data` will override `validation_split`.
-        :return: the trained (fitted) model
-        """
-        assert len(x) == len(y), "The x and y data matrices need to contain the same number of instances!"
-
-        if self._shuffle_training_data is not False:
-            if self._shuffle_training_data is not True:
-                # assume `shuffle_training_data` contains the random seed
-                np.random.seed(self._shuffle_training_data)
-            indices = np.arange(len(x))
-            np.random.shuffle(indices)
-            x = x[indices]
-            y = y[indices]
-
-        # create a sequential model
-        model, loss = self._setup_model(y=y)
-        model.compile(loss=loss,
-                      optimizer=Adam(lr=self._learning_rate, decay=self._learning_decay),
-                      metrics=['accuracy', 'mean_squared_error'],
-                      )
-
-        try:
-            if not self._experiment_folder.exists():
-                self._experiment_folder.mkdir(parents=True, exist_ok=True)
-            csv_log = self._experiment_folder / "epoch_results.csv"
-
-            # start the training (fit the model to the data)
-            model.fit(x=x, y=y,
-                      shuffle=False, validation_split=self._validation_split, validation_data=validation_data,
-                      batch_size=self._batch_size, epochs=self._num_epochs,
-                      callbacks=[CSVLogger(str(csv_log), append=False, separator=';')])
-        except KeyboardInterrupt:
-            print()
-            logging.warning(f"KeyboardInterrupt: Interrupting model fit ...")
-
-        # noinspection PyUnresolvedReferences
-        self._plot_training_stats(model.history)
-        gc.collect()
-
-        return model
+        self._model = model
 
     def _setup_model(self,
                      y: Union[np.ndarray, int],
