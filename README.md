@@ -27,7 +27,7 @@ docker run --rm --runtime=nvidia -v "${PWD}:/code" -w "/code" -it textnn
 ```
 
 ### AWS
-The recommended EC2 setup (`g2.2xlarge` or better) is based on `Deep Learning AMI (Ubuntu) Version 21.2`
+The recommended EC2 setup (e.g., `g3s.xlarge`) is based on `Deep Learning AMI (Ubuntu) Version 21.2`
 (ami-0e9085a8d461c2d01) with an increased volumne of 120GB or more. It is recommended to execute code via
 [Docker](#Docker), by setting up the project and creating an image:
 ```bash
