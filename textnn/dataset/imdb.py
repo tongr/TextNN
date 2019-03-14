@@ -442,6 +442,47 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram):
 
         return results
 
+    def _cross_validation(self, x: np.ndarray, y_class_labels: np.ndarray, k: int):
+        y = self._label_enc.make_categorical(y_labels=y_class_labels)
+
+        from copy import copy
+        from sklearn.model_selection import StratifiedKFold
+        # define 10-fold cross validation test harness
+        k_fold = StratifiedKFold(
+            n_splits=k,
+            shuffle=self._shuffle_training_data is not False,
+            random_state=self._shuffle_training_data if isinstance(self._shuffle_training_data, int) else None
+        )
+
+        results = []
+        histories = []
+        for fold_idx, (train_instances, test_instances) in enumerate(k_fold.split(x, y_class_labels)):
+            logging.info(f"Validating fold {fold_idx + 1} of {k}")
+            fold_config = copy(self)
+            fold_config._experiment_folder /= f"fold_{fold_idx + 1}"
+
+            # split training and validation data and train model
+            fold_config._train_or_load_model(
+                x[train_instances], y[train_instances], validation_data=(x[test_instances], y[test_instances]))
+
+            results.append(fold_config._validate_model(x=x[test_instances], y=y[test_instances]))
+            # noinspection PyUnresolvedReferences
+            histories.append(copy(fold_config._model.history.history))
+
+        # collect results and build statistics
+        stats = statistics(data=results)
+        logging.info("results:")
+        logging.info("\n".join(str(result) for result in results))
+        logging.info("stats:")
+        logging.info(stats)
+
+        write_text_file(
+            file_path=self._experiment_folder / "cross_validation.json",
+            text=json.dumps(stats))
+
+        self._plot_all_cross_validation_stats(histories)
+        gc.collect()
+
     #
     # utils and accessors
     #
@@ -513,6 +554,9 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram):
     def _experiment_folder(self, value):
         self.__dict__["__experiment_folder"] = value
 
+    #
+    # plotting utils
+    #
     def _plot_training_stats(self, history_data: dict):
         # plot accuracy
         y_series = [("Training", history_data["acc"])]
@@ -541,6 +585,46 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram):
             x_values=list(range(self._num_epochs)), y_series=y_series,
             title="Training and Validation Cross Entropy", x_label="Epochs", y_label="Cross Entropy",
         )
+
+    def _plot_cross_validation_stats(self, hist_stats: dict, measure: str, longname: str = None):
+        def get_values(stat_name, m=measure):
+            return list(hist_stats[m][idx][stat_name] if idx in hist_stats[m] else None
+                        for idx in range(self._num_epochs))
+
+        if not longname:
+            longname = measure.title()
+
+        std = get_values("std")
+        y_series = [
+            (f"Training (mean)", get_values("mean"), "b-"),
+            (f"Training (std)", list(x+std[i] for i, x in enumerate(get_values("mean"))), "b:"),
+            (f"Training (std-)", list(x-std[i] for i, x in enumerate(get_values("mean"))), "b:", False),
+        ]
+        shaded_areas = [
+            (get_values("min"), get_values("max"), "b", .05),
+            (f"Training (std)", f"Training (std-)", "b", .1),
+        ]
+        if f"val_{measure}" in hist_stats:
+            mean = get_values("mean", f"val_{measure}")
+            std = get_values("std", f"val_{measure}")
+            y_series.append((f"Validation (mean)", mean, "r-"))
+            y_series.append((f"Validation (std)", list(x+std[i] for i, x in enumerate(mean)), "r:"))
+            y_series.append((f"Validation (std-)", list(x-std[i] for i, x in enumerate(mean)), "r:", False))
+            shaded_areas.append((get_values("min", f"val_{measure}"), get_values("max", f"val_{measure}"), "r", .05))
+            shaded_areas.append((f"Validation (std)", f"Validation (std-)", "r", .1))
+
+        plot_to_file(
+            file=self._experiment_folder / f"{longname}.pdf".lower().replace(" ", "_"),
+            x_values=list(range(self._num_epochs)), y_series=y_series,
+            title=f"Training and Validation {longname}", x_label="Epochs", y_label=longname,
+            shaded_areas=shaded_areas
+        )
+
+    def _plot_all_cross_validation_stats(self, histories: List[dict]):
+        hist_stats = statistics(histories, add_raw_values=True)
+        self._plot_cross_validation_stats(hist_stats, "acc", "Accuracy")
+        self._plot_cross_validation_stats(hist_stats, "mean_squared_error", "MSE")
+        self._plot_cross_validation_stats(hist_stats, "loss", "Cross Entropy")
 
 
 class ImdbClassifier(KerasModelTrainingProgram):
@@ -701,87 +785,3 @@ class ImdbClassifier(KerasModelTrainingProgram):
         del text_list, data
         gc.collect()
         self._cross_validation(x=x, y_class_labels=y_class_labels, k=k)
-
-    def _cross_validation(self, x: np.ndarray, y_class_labels: np.ndarray, k: int):
-        y = self._label_enc.make_categorical(y_labels=y_class_labels)
-
-        from copy import copy
-        from sklearn.model_selection import StratifiedKFold
-        # define 10-fold cross validation test harness
-        k_fold = StratifiedKFold(
-            n_splits=k,
-            shuffle=self._shuffle_training_data is not False,
-            random_state=self._shuffle_training_data if isinstance(self._shuffle_training_data, int) else None
-        )
-
-        results = []
-        histories = []
-        for fold_idx, (train_instances, test_instances) in enumerate(k_fold.split(x, y_class_labels)):
-            logging.info(f"Validating fold {fold_idx + 1} of {k}")
-            fold_config = copy(self)
-            fold_config._experiment_folder /= f"fold_{fold_idx + 1}"
-
-            # split training and validation data and train model
-            fold_config._train_or_load_model(
-                x[train_instances], y[train_instances], validation_data=(x[test_instances], y[test_instances]))
-
-            results.append(fold_config._validate_model(x=x[test_instances], y=y[test_instances]))
-            # noinspection PyUnresolvedReferences
-            histories.append(copy(fold_config._model.history.history))
-
-        # collect results and build statistics
-        stats = statistics(data=results)
-        logging.info("results:")
-        logging.info("\n".join(str(result) for result in results))
-        logging.info("stats:")
-        logging.info(stats)
-
-        write_text_file(
-            file_path=self._experiment_folder / "cross_validation.json",
-            text=json.dumps(stats))
-
-        self._plot_all_cross_validation_stats(histories)
-        gc.collect()
-
-    #
-    # plotting utils
-    #
-    def _plot_cross_validation_stats(self, hist_stats: dict, measure: str, longname: str = None):
-        def get_values(stat_name, m=measure):
-            return list(hist_stats[m][idx][stat_name] if idx in hist_stats[m] else None
-                        for idx in range(self._num_epochs))
-
-        if not longname:
-            longname = measure.title()
-
-        std = get_values("std")
-        y_series = [
-            (f"Training (mean)", get_values("mean"), "b-"),
-            (f"Training (std)", list(x+std[i] for i, x in enumerate(get_values("mean"))), "b:"),
-            (f"Training (std-)", list(x-std[i] for i, x in enumerate(get_values("mean"))), "b:", False),
-        ]
-        shaded_areas = [
-            (get_values("min"), get_values("max"), "b", .05),
-            (f"Training (std)", f"Training (std-)", "b", .1),
-        ]
-        if f"val_{measure}" in hist_stats:
-            mean = get_values("mean", f"val_{measure}")
-            std = get_values("std", f"val_{measure}")
-            y_series.append((f"Validation (mean)", mean, "r-"))
-            y_series.append((f"Validation (std)", list(x+std[i] for i, x in enumerate(mean)), "r:"))
-            y_series.append((f"Validation (std-)", list(x-std[i] for i, x in enumerate(mean)), "r:", False))
-            shaded_areas.append((get_values("min", f"val_{measure}"), get_values("max", f"val_{measure}"), "r", .05))
-            shaded_areas.append((f"Validation (std)", f"Validation (std-)", "r", .1))
-
-        plot_to_file(
-            file=self._experiment_folder / f"{longname}.pdf".lower().replace(" ", "_"),
-            x_values=list(range(self._num_epochs)), y_series=y_series,
-            title=f"Training and Validation {longname}", x_label="Epochs", y_label=longname,
-            shaded_areas=shaded_areas
-        )
-
-    def _plot_all_cross_validation_stats(self, histories: List[dict]):
-        hist_stats = statistics(histories, add_raw_values=True)
-        self._plot_cross_validation_stats(hist_stats, "acc", "Accuracy")
-        self._plot_cross_validation_stats(hist_stats, "mean_squared_error", "MSE")
-        self._plot_cross_validation_stats(hist_stats, "loss", "Cross Entropy")
