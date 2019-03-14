@@ -694,12 +694,15 @@ class ImdbClassifier(KerasModelTrainingProgram):
         text_list = list(tex for tex, lab in data)
         x: np.ndarray = self._text_enc.encode(texts=text_list)
 
-        # cleanup memory
-        del text_list
-        gc.collect()
-
         # prepare training labels
         y_class_labels: np.ndarray = self._label_enc.integer_class_labels(labeled_data=data)
+
+        # cleanup memory
+        del text_list, data
+        gc.collect()
+        self._cross_validation(x=x, y_class_labels=y_class_labels, k=k)
+
+    def _cross_validation(self, x: np.ndarray, y_class_labels: np.ndarray, k: int):
         y = self._label_enc.make_categorical(y_labels=y_class_labels)
 
         from copy import copy
@@ -737,9 +740,8 @@ class ImdbClassifier(KerasModelTrainingProgram):
             file_path=self._experiment_folder / "cross_validation.json",
             text=json.dumps(stats))
 
-        del data
-        gc.collect()
         self._plot_all_cross_validation_stats(histories)
+        gc.collect()
 
     #
     # plotting utils
