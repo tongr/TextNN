@@ -6,6 +6,7 @@ import pickle
 from pathlib import PurePath, Path
 from typing import List, Tuple, Union, Iterable, Any
 
+from itertools import chain
 from keras import Sequential
 from keras.backend import clear_session as clear_keras_session
 from keras.callbacks import CSVLogger
@@ -115,254 +116,41 @@ def imdb_data_generator(base_folder, pos_only: bool = None, train_only: bool = N
                                                                                  train_only=train_only))
 
 
-class ImdbClassifier:
-    def __init__(self, data_folder, vocabulary_size: int = 4096, max_text_length: int = 512,
-                 pad_beginning: bool = True, use_start_end_indicators: bool = True,
-                 embeddings: Union[int, str, PurePath] = 32, update_embeddings: bool = True,
-                 layer_definitions: str = None,
-                 batch_size: int = 1024, num_epochs: int = 25, learning_rate: float = 0.001, learning_decay: float = 0.,
-                 shuffle_training_data: Union[int, bool] = 113,
-                 log_config: bool = True,
+class BaseSequenceEncodingProgram:
+    def __init__(self, base_folder,
+                 vocabulary_size: int, max_text_length: int,
+                 pad_beginning: bool, use_start_end_indicators: bool,
                  ):
         """
-
-        :param data_folder: the folder containing the IMDb dataset
+        Basic program for en-/decoding text sequences
+        :param base_folder: the folder that will contain prepared encoders
         :param vocabulary_size: size of the input vocabulary
         :param max_text_length: the maximum amount of token to konsider during sequence encoding
         :param pad_beginning: if True, add padding at start and end of an encoded token sequence
         :param use_start_end_indicators: if True, use reserved indicator token `<START>` and `<END>` during token
         sequence encoding
-        :param embeddings: either the size of the embedding layer or the path to a vector file containing pretrained
-        embeddings
-        :param update_embeddings: if False, the embedding layer will not be updated during training (i.e., for
-        pretrained embeddings)
-        :param layer_definitions: additional layer definitions downstream the embeddings
-        :param batch_size: Number of samples per gradient update
-        :param learning_rate: Learning rate
-        :param learning_decay: Learning decay
-        :param num_epochs: Number of epochs to train the model. An epoch is an iteration over the entire `x` and `y`
-        data provided.
-        :param shuffle_training_data: shuffle the training to avoid problems in input order (e.g., if data is sorted by
-        label). If `shuffle_data=False`, the data will not be shuffled, if `shuffle_data=True`, the data will be
-        shuffled randomly, if `shuffle_data` is an integer, this value will be used as seed for the random function.
-        :param log_config: if True a the config of this instance is printed after setup
         """
-        self._data_folder: Path = data_folder if isinstance(data_folder, PurePath) else Path(data_folder)
+        self._base_folder: Path = base_folder if isinstance(base_folder, PurePath) else Path(base_folder)
         self._vocabulary_size = vocabulary_size
         self._max_text_length = max_text_length
         self._use_start_end_indicators = use_start_end_indicators
         self._pad_beginning = pad_beginning
-        # the embeddings parameter can be both: size of a (not yet trained) layer or a file with pretrained embeddings
-        self._embeddings: Union[int, str, PurePath] = embeddings
-        self._update_embeddings: bool = update_embeddings
-        self._batch_size = batch_size
-        self._num_epochs = num_epochs
-        self._learning_rate = learning_rate
-        self._learning_decay = learning_decay
-        self._shuffle_training_data = shuffle_training_data
 
-        self._model: Sequential = None
         self._text_enc: AbstractTokenEncoder = None
         self._label_enc: LabelEncoder = None
-        self._layers, self._layer_definitions = self._parse_layer_definitions(
-            layer_definitions if layer_definitions else "Dropout(0.5)|LSTM(8,dropout=0.5)")
-        if log_config:
-            logging.info(f"{self.__class__.__name__}-configuration:\n{self.config}")
-
-    #
-    # public methods
-    #
-    def train_and_test(self, validation_split: float = .05):
-        """
-        Train a model (using epoch validation based on `validation_split`) and test it's performance on the independent
-        data test set.
-        :param validation_split: Float between 0 and 1. Fraction of the training data to be used as validation data. The
-        model will set apart this fraction of the training data, will not train on it, and will evaluate the loss and
-        any model metrics on this data at the end of each epoch. The validation data is selected from the last samples
-        in the `x` and `y` data provided, before shuffling.
-        """
-        if validation_split:
-            self._experiment_folder /= f"validation-split-{validation_split}"
-        #
-        # training
-        #
-        # get training data
-        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
-
-        # prepare the encoders
-        self._prepare_or_load_encoders(
-            training_data=training_data,
-            initialized_text_enc=TokenSequenceEncoder(
-                limit_vocabulary=self._vocabulary_size,
-                default_length=self._max_text_length,
-                pad_beginning=self._pad_beginning,
-                add_start_end_indicators=self._use_start_end_indicators,
-            ),
-        )
-
-        # extract data vectors (from training data)
-        text_list = list(tex for tex, lab in training_data)
-        x_train: np.ndarray = self._text_enc.encode(texts=text_list)
-
-        # prepare training labels
-        y_train: np.ndarray = self._label_enc.make_categorical(labeled_data=training_data)
-
-        # cleanup
-        del training_data, text_list
-
-        # load or train model
-        self._train_or_load_model(x_train, y_train)
-
-        # cleanup memory
-        del x_train, y_train
-        gc.collect()
-
-        #
-        # testing
-        #
-        # extract test data
-        test_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=False))
-        # evaluate the performance of the model
-        self._test_model(test_data)
-
-        del test_data
-        gc.collect()
-
-    def test_encoding(self, *texts: str):
-        if len(texts) <= 0:
-            logging.warning("Please specify at least one text to encode!")
-            return
-
-        # get training data
-        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
-
-        # prepare the encoders
-        self._prepare_or_load_encoders(
-            training_data=training_data,
-            initialized_text_enc=TokenSequenceEncoder(
-                limit_vocabulary=self._vocabulary_size,
-                default_length=self._max_text_length,
-                pad_beginning=self._pad_beginning,
-                add_start_end_indicators=self._use_start_end_indicators,
-            ),
-        )
-
-        # debug the text encoder
-        logging.info(f"Trying to encode the following texts: {texts}")
-        self._text_enc.print_representations(texts)
-
-    @property
-    def config(self) -> str:
-        return "\n".join(f"  {key}: {value}" for key, value in sorted(self._config_parameters))
-
-    def cross_validation(self, k: int = 10):
-        self._experiment_folder /= f"{k}-fold-cross-validation"
-        # get training data
-        data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._data_folder, train_only=True))
-
-        # prepare the encoders
-        self._prepare_or_load_encoders(
-            training_data=data,
-            initialized_text_enc=TokenSequenceEncoder(
-                limit_vocabulary=self._vocabulary_size,
-                default_length=self._max_text_length),
-        )
-
-        # extract data vectors (from training data)
-        text_list = list(tex for tex, lab in data)
-        x: np.ndarray = self._text_enc.encode(texts=text_list)
-
-        # cleanup memory
-        del text_list
-        gc.collect()
-
-        # prepare training labels
-        y_class_labels: np.ndarray = self._label_enc.integer_class_labels(labeled_data=data)
-        y = self._label_enc.make_categorical(y_labels=y_class_labels)
-
-        from copy import copy
-        from sklearn.model_selection import StratifiedKFold
-        # define 10-fold cross validation test harness
-        k_fold = StratifiedKFold(
-            n_splits=k,
-            shuffle=self._shuffle_training_data is not False,
-            random_state=self._shuffle_training_data if isinstance(self._shuffle_training_data, int) else None
-        )
-
-        results = []
-        histories = []
-        for fold_idx, (train_instances, test_instances) in enumerate(k_fold.split(x, y_class_labels)):
-            logging.info(f"Validating fold {fold_idx + 1} of {k}")
-            fold_config = copy(self)
-            fold_config._experiment_folder /= f"fold_{fold_idx + 1}"
-
-            # split training and validation data and train model
-            fold_config._train_or_load_model(
-                x[train_instances], y[train_instances], validation_data=(x[test_instances], y[test_instances]))
-
-            results.append(fold_config._validate_model(x=x[test_instances], y=y[test_instances]))
-            # noinspection PyUnresolvedReferences
-            histories.append(copy(fold_config._model.history.history))
-
-        # collect results and build statistics
-        stats = statistics(data=results)
-        logging.info("results:")
-        logging.info("\n".join(str(result) for result in results))
-        logging.info("stats:")
-        logging.info(stats)
-
-        write_text_file(
-            file_path=self._experiment_folder / "cross_validation.json",
-            text=json.dumps(stats))
-
-        del data
-        gc.collect()
-        self._plot_all_cross_validation_stats(histories)
-
-    #
-    # config accessors
-    #
-    @staticmethod
-    def _parse_layer_definitions(layer_definitions: Union[str, List[str]], sep="|"):
-        def layer_class_names(packages):
-            import inspect
-            import importlib
-            classes = set()
-            for package in packages:
-                module = importlib.import_module(package)
-                for name, obj in inspect.getmembers(module, inspect.isclass):
-                    classes.add(obj.__name__)
-            return classes
-
-        if sep:
-            layer_definitions = layer_definitions.split(sep)
-
-        import re
-        p = re.compile("^({})\\(.*\\)$".format("|".join(layer_class_names(["keras.layers"]))))
-        layers = []
-        for position, layer_def in enumerate(layer_definitions):
-            m = p.fullmatch(layer_def)
-            if not m:
-                logging.error(f"Illegal layer definition found in position {position}: \"{layer_def}\"")
-                raise ValueError(f"Illegal layer definition found in position {position}: \"{layer_def}\"")
-
-            layers.append(eval(layer_def))
-        return layers, layer_definitions
 
     @property
     def _config_parameters(self) -> Iterable[Tuple[str, Any]]:
-        from itertools import chain
-        kv = chain(
+        kv: Iterable[Tuple[str, Any]] = chain(
             self.__dict__.items(),
-            [("_encoder_folder", self._encoder_folder),
-             ("_model_folder", self._model_folder),
-             ("_experiment_folder", self._experiment_folder)])
-        return ((key.lstrip("_"), value) for key, value in kv)
+            [("_encoder_folder", self._encoder_folder)]
+        )
+        return kv
 
     @property
     def _encoder_folder(self) -> Path:
         # name sub-folder
-        return self._data_folder / join_name([
+        return self._base_folder / join_name([
             # create name by joining all of the following elements (remove empty strings / None)
             "sequences",
             f"vocab{self._vocabulary_size}",
@@ -372,51 +160,17 @@ class ImdbClassifier:
         ])
 
     @property
-    def _model_folder(self) -> Path:
-        # name sub-folder
-        return self._encoder_folder / join_name([
-            # create name by joining all of the following elements (remove empty strings / None)
-            "sequential",
-            # if `self._embeddings` is an integer, we use it as embedding layer size, otherwise we try to identify a the
-            # file with pretrained embeddings
-            f"{self._embeddings}" if isinstance(self._embeddings, int) else "pretrained-embeddings{}".format(
-                hashlib.md5(open(str(self._embeddings), "rb").read()).hexdigest()),
-            "update-embeddings" if self._update_embeddings else None,
-            "layers-{}".format("-".join(self._layer_definitions)),
-        ])
-
-    @property
-    def _experiment_folder(self) -> Path:
-        if "__experiment_folder" in self.__dict__:
-            return self.__dict__["__experiment_folder"]
-        # name sub-folder
-        return self._model_folder / join_name([
-            # create name by joining all of the following elements (remove empty strings / None)
-            "experiment",
-            f"epochs{self._num_epochs}",
-            f"batch{self._batch_size}",
-            f"lr{self._learning_rate}",
-            f"decay{self._learning_decay}" if self._learning_decay else None,
-            None if self._shuffle_training_data is False else "shuffle" if self._shuffle_training_data is True
-            else f"shuffle{self._shuffle_training_data}",
-        ])
-
-    @_experiment_folder.setter
-    def _experiment_folder(self, value):
-        self.__dict__["__experiment_folder"] = value
+    def config(self) -> str:
+        return "\n".join(f"  {key}: {value}" for key, value in sorted(
+            (key.lstrip("_"), value) for key, value in self._config_parameters))
 
     def reset(self):
         self._text_enc, self._label_enc = None, None
-        self._model = None
-        del self.__dict__["__experiment_folder"]
-        # clean keras/tensorflow backend
-        clear_keras_session()
         gc.collect()
 
     #
-    # preparation
-    #
     # prepare encoders
+    #
     def _prepare_or_load_encoders(self,
                                   training_data: List[Tuple[str, int]],
                                   initialized_text_enc: AbstractTokenEncoder,
@@ -459,80 +213,65 @@ class ImdbClassifier:
 
         self._text_enc, self._label_enc = text_enc, label_enc
 
-    #
-    # plotting utils
-    #
-    def _plot_cross_validation_stats(self, hist_stats: dict, measure: str, longname: str = None):
-        def get_values(stat_name, m=measure):
-            return list(hist_stats[m][idx][stat_name] if idx in hist_stats[m] else None
-                        for idx in range(self._num_epochs))
 
-        if not longname:
-            longname = measure.title()
+class KerasModelTrainingProgram(BaseSequenceEncodingProgram):
+    def __init__(self, base_folder, vocabulary_size: int, max_text_length: int,
+                 pad_beginning: bool, use_start_end_indicators: bool,
+                 embeddings: Union[int, str, PurePath], update_embeddings: bool,
+                 layer_definitions: str,
+                 batch_size: int, num_epochs: int, learning_rate: float, learning_decay: float,
+                 shuffle_training_data: Union[int, bool],
+                 ):
+        """
+        Basic program for training keras models
+        :param base_folder: the folder that will contain trained models
+        :param vocabulary_size: size of the input vocabulary
+        :param max_text_length: the maximum amount of token to konsider during sequence encoding
+        :param pad_beginning: if True, add padding at start and end of an encoded token sequence
+        :param use_start_end_indicators: if True, use reserved indicator token `<START>` and `<END>` during token
+        sequence encoding
+        :param embeddings: either the size of the embedding layer or the path to a vector file containing pretrained
+        embeddings
+        :param update_embeddings: if False, the embedding layer will not be updated during training (i.e., for
+        pretrained embeddings)
+        :param layer_definitions: additional layer definitions downstream the embeddings
+        :param batch_size: Number of samples per gradient update
+        :param learning_rate: Learning rate
+        :param learning_decay: Learning decay
+        :param num_epochs: Number of epochs to train the model. An epoch is an iteration over the entire `x` and `y`
+        data provided.
+        :param shuffle_training_data: shuffle the training to avoid problems in input order (e.g., if data is sorted by
+        label). If `shuffle_data=False`, the data will not be shuffled, if `shuffle_data=True`, the data will be
+        shuffled randomly, if `shuffle_data` is an integer, this value will be used as seed for the random function.
+        """
+        super().__init__(base_folder=base_folder, vocabulary_size=vocabulary_size, max_text_length=max_text_length,
+                         pad_beginning=pad_beginning, use_start_end_indicators=use_start_end_indicators)
 
-        std = get_values("std")
-        y_series = [
-            (f"Training (mean)", get_values("mean"), "b-"),
-            (f"Training (std)", list(x+std[i] for i, x in enumerate(get_values("mean"))), "b:"),
-            (f"Training (std-)", list(x-std[i] for i, x in enumerate(get_values("mean"))), "b:", False),
-        ]
-        shaded_areas = [
-            (get_values("min"), get_values("max"), "b", .05),
-            (f"Training (std)", f"Training (std-)", "b", .1),
-        ]
-        if f"val_{measure}" in hist_stats:
-            mean = get_values("mean", f"val_{measure}")
-            std = get_values("std", f"val_{measure}")
-            y_series.append((f"Validation (mean)", mean, "r-"))
-            y_series.append((f"Validation (std)", list(x+std[i] for i, x in enumerate(mean)), "r:"))
-            y_series.append((f"Validation (std-)", list(x-std[i] for i, x in enumerate(mean)), "r:", False))
-            shaded_areas.append((get_values("min", f"val_{measure}"), get_values("max", f"val_{measure}"), "r", .05))
-            shaded_areas.append((f"Validation (std)", f"Validation (std-)", "r", .1))
+        # the embeddings parameter can be both: size of a (not yet trained) layer or a file with pretrained embeddings
+        self._embeddings: Union[int, str, PurePath] = embeddings
+        self._update_embeddings: bool = update_embeddings
+        self._batch_size = batch_size
+        self._num_epochs = num_epochs
+        self._learning_rate = learning_rate
+        self._learning_decay = learning_decay
+        self._shuffle_training_data = shuffle_training_data
 
-        plot_to_file(
-            file=self._experiment_folder / f"{longname}.pdf".lower().replace(" ", "_"),
-            x_values=list(range(self._num_epochs)), y_series=y_series,
-            title=f"Training and Validation {longname}", x_label="Epochs", y_label=longname,
-            shaded_areas=shaded_areas
-        )
+        self._model: Sequential = None
+        self._text_enc: AbstractTokenEncoder = None
+        self._label_enc: LabelEncoder = None
+        self._layers, self._layer_definitions = self._parse_layer_definitions(
+            layer_definitions if layer_definitions else "Dropout(0.5)|LSTM(8,dropout=0.5)")
 
-    def _plot_all_cross_validation_stats(self, histories: List[dict]):
-        hist_stats = statistics(histories, add_raw_values=True)
-        self._plot_cross_validation_stats(hist_stats, "acc", "Accuracy")
-        self._plot_cross_validation_stats(hist_stats, "mean_squared_error", "MSE")
-        self._plot_cross_validation_stats(hist_stats, "loss", "Cross Entropy")
-
-    def _plot_training_stats(self, history_data: dict):
-        # plot accuracy
-        y_series = [("Training", history_data["acc"])]
-        if "val_acc" in history_data:
-            y_series.append(("Validation", history_data["val_acc"]))
-        plot_to_file(
-            file=self._experiment_folder / "accuracy.pdf",
-            x_values=list(range(self._num_epochs)), y_series=y_series,
-            title="Training and Validation Accuracy", x_label="Epochs", y_label="Accuracy",
-        )
-        # plot MSE
-        y_series = [("Training", history_data["mean_squared_error"])]
-        if "val_mean_squared_error" in history_data:
-            y_series.append(("Validation", history_data["val_mean_squared_error"]))
-        plot_to_file(
-            file=self._experiment_folder / "mse.pdf",
-            x_values=list(range(self._num_epochs)), y_series=y_series,
-            title="Training and Validation Mean Squared Error", x_label="Epochs", y_label="MSE",
-        )
-        # plot loss
-        y_series = [("Training", history_data['loss'])]
-        if "val_loss" in history_data:
-            y_series.append(("Validation", history_data["val_loss"]))
-        plot_to_file(
-            file=self._experiment_folder / "cross_entropy.pdf",
-            x_values=list(range(self._num_epochs)), y_series=y_series,
-            title="Training and Validation Cross Entropy", x_label="Epochs", y_label="Cross Entropy",
-        )
+    def reset(self):
+        super().reset()
+        self._model = None
+        del self.__dict__["__experiment_folder"]
+        # clean keras/tensorflow backend
+        clear_keras_session()
+        gc.collect()
 
     #
-    # prepare model
+    # model training and validation
     #
     def _train_or_load_model(self,
                              x: np.ndarray, y: np.ndarray,
@@ -673,19 +412,6 @@ class ImdbClassifier:
 
         return model, loss
 
-    #
-    # evaluation
-    #
-    def _test_model(self, test_data: List[Tuple[str, int]]):
-        # extract data vectors (from test data)
-        x_test: np.ndarray = self._text_enc.encode(texts=list(text for text, lab in test_data))
-
-        # extract label vectors (from test data)
-        y_test_categories: np.ndarray = self._label_enc.make_categorical(labeled_data=test_data)
-        gc.collect()
-
-        self._validate_model(x=x_test, y=y_test_categories, validation_file_name="text.json")
-
     def _validate_model(self, x: np.ndarray, y: np.ndarray, validation_file_name: str = "validation.json") -> dict:
         logging.info("Creating predictions ...")
         y_predicted_categories = self._model.predict(x, batch_size=self._batch_size)
@@ -715,3 +441,352 @@ class ImdbClassifier:
             text=json.dumps(results))
 
         return results
+
+    #
+    # utils and accessors
+    #
+    @staticmethod
+    def _parse_layer_definitions(layer_definitions: Union[str, List[str]], sep="|"):
+        def layer_class_names(packages):
+            import inspect
+            import importlib
+            classes = set()
+            for package in packages:
+                module = importlib.import_module(package)
+                for name, obj in inspect.getmembers(module, inspect.isclass):
+                    classes.add(obj.__name__)
+            return classes
+
+        if sep:
+            layer_definitions = layer_definitions.split(sep)
+
+        import re
+        p = re.compile("^({})\\(.*\\)$".format("|".join(layer_class_names(["keras.layers"]))))
+        layers = []
+        for position, layer_def in enumerate(layer_definitions):
+            m = p.fullmatch(layer_def)
+            if not m:
+                logging.error(f"Illegal layer definition found in position {position}: \"{layer_def}\"")
+                raise ValueError(f"Illegal layer definition found in position {position}: \"{layer_def}\"")
+
+            layers.append(eval(layer_def))
+        return layers, layer_definitions
+
+    @property
+    def _config_parameters(self) -> Iterable[Tuple[str, Any]]:
+        return chain(
+            super()._config_parameters,
+            [("_model_folder", self._model_folder), ("_experiment_folder", self._experiment_folder)]
+        )
+
+    @property
+    def _model_folder(self) -> Path:
+        # name sub-folder
+        return self._encoder_folder / join_name([
+            # create name by joining all of the following elements (remove empty strings / None)
+            "sequential",
+            # if `self._embeddings` is an integer, we use it as embedding layer size, otherwise we try to identify a the
+            # file with pretrained embeddings
+            f"{self._embeddings}" if isinstance(self._embeddings, int) else "pretrained-embeddings{}".format(
+                hashlib.md5(open(str(self._embeddings), "rb").read()).hexdigest()),
+            "update-embeddings" if self._update_embeddings else None,
+            "layers-{}".format("-".join(self._layer_definitions)),
+        ])
+
+    @property
+    def _experiment_folder(self) -> Path:
+        if "__experiment_folder" in self.__dict__:
+            return self.__dict__["__experiment_folder"]
+        # name sub-folder
+        return self._model_folder / join_name([
+            # create name by joining all of the following elements (remove empty strings / None)
+            "experiment",
+            f"epochs{self._num_epochs}",
+            f"batch{self._batch_size}",
+            f"lr{self._learning_rate}",
+            f"decay{self._learning_decay}" if self._learning_decay else None,
+            None if self._shuffle_training_data is False else "shuffle" if self._shuffle_training_data is True
+            else f"shuffle{self._shuffle_training_data}",
+        ])
+
+    @_experiment_folder.setter
+    def _experiment_folder(self, value):
+        self.__dict__["__experiment_folder"] = value
+
+    def _plot_training_stats(self, history_data: dict):
+        # plot accuracy
+        y_series = [("Training", history_data["acc"])]
+        if "val_acc" in history_data:
+            y_series.append(("Validation", history_data["val_acc"]))
+        plot_to_file(
+            file=self._experiment_folder / "accuracy.pdf",
+            x_values=list(range(self._num_epochs)), y_series=y_series,
+            title="Training and Validation Accuracy", x_label="Epochs", y_label="Accuracy",
+        )
+        # plot MSE
+        y_series = [("Training", history_data["mean_squared_error"])]
+        if "val_mean_squared_error" in history_data:
+            y_series.append(("Validation", history_data["val_mean_squared_error"]))
+        plot_to_file(
+            file=self._experiment_folder / "mse.pdf",
+            x_values=list(range(self._num_epochs)), y_series=y_series,
+            title="Training and Validation Mean Squared Error", x_label="Epochs", y_label="MSE",
+        )
+        # plot loss
+        y_series = [("Training", history_data['loss'])]
+        if "val_loss" in history_data:
+            y_series.append(("Validation", history_data["val_loss"]))
+        plot_to_file(
+            file=self._experiment_folder / "cross_entropy.pdf",
+            x_values=list(range(self._num_epochs)), y_series=y_series,
+            title="Training and Validation Cross Entropy", x_label="Epochs", y_label="Cross Entropy",
+        )
+
+
+class ImdbClassifier(KerasModelTrainingProgram):
+    def __init__(self, data_folder, vocabulary_size: int = 4096, max_text_length: int = 512,
+                 pad_beginning: bool = True, use_start_end_indicators: bool = True,
+                 embeddings: Union[int, str, PurePath] = 32, update_embeddings: bool = True,
+                 layer_definitions: str = None,
+                 batch_size: int = 1024, num_epochs: int = 25, learning_rate: float = 0.001, learning_decay: float = 0.,
+                 shuffle_training_data: Union[int, bool] = 113,
+                 log_config: bool = True,
+                 ):
+        """
+
+        :param data_folder: the folder containing the IMDb dataset
+        :param vocabulary_size: size of the input vocabulary
+        :param max_text_length: the maximum amount of token to konsider during sequence encoding
+        :param pad_beginning: if True, add padding at start and end of an encoded token sequence
+        :param use_start_end_indicators: if True, use reserved indicator token `<START>` and `<END>` during token
+        sequence encoding
+        :param embeddings: either the size of the embedding layer or the path to a vector file containing pretrained
+        embeddings
+        :param update_embeddings: if False, the embedding layer will not be updated during training (i.e., for
+        pretrained embeddings)
+        :param layer_definitions: additional layer definitions downstream the embeddings
+        :param batch_size: Number of samples per gradient update
+        :param learning_rate: Learning rate
+        :param learning_decay: Learning decay
+        :param num_epochs: Number of epochs to train the model. An epoch is an iteration over the entire `x` and `y`
+        data provided.
+        :param shuffle_training_data: shuffle the training to avoid problems in input order (e.g., if data is sorted by
+        label). If `shuffle_data=False`, the data will not be shuffled, if `shuffle_data=True`, the data will be
+        shuffled randomly, if `shuffle_data` is an integer, this value will be used as seed for the random function.
+        :param log_config: if True a the config of this instance is printed after setup
+        """
+        super().__init__(
+            base_folder=data_folder,
+            vocabulary_size=vocabulary_size, max_text_length=max_text_length,
+            pad_beginning=pad_beginning, use_start_end_indicators=use_start_end_indicators,
+            embeddings=embeddings, update_embeddings=update_embeddings,
+            layer_definitions=layer_definitions,
+            batch_size=batch_size, num_epochs=num_epochs,
+            learning_rate=learning_rate, learning_decay=learning_decay, shuffle_training_data=shuffle_training_data,
+        )
+
+        if log_config:
+            logging.info(f"{self.__class__.__name__}-configuration:\n{self.config}")
+
+    #
+    # public methods
+    #
+    def train_and_test(self, validation_split: float = .05):
+        """
+        Train a model (using epoch validation based on `validation_split`) and test it's performance on the independent
+        data test set.
+        :param validation_split: Float between 0 and 1. Fraction of the training data to be used as validation data. The
+        model will set apart this fraction of the training data, will not train on it, and will evaluate the loss and
+        any model metrics on this data at the end of each epoch. The validation data is selected from the last samples
+        in the `x` and `y` data provided, before shuffling.
+        """
+        if validation_split:
+            self._experiment_folder /= f"validation-split-{validation_split}"
+        #
+        # training
+        #
+        # get training data
+        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._base_folder, train_only=True))
+
+        # prepare the encoders
+        self._prepare_or_load_encoders(
+            training_data=training_data,
+            initialized_text_enc=TokenSequenceEncoder(
+                limit_vocabulary=self._vocabulary_size,
+                default_length=self._max_text_length,
+                pad_beginning=self._pad_beginning,
+                add_start_end_indicators=self._use_start_end_indicators,
+            ),
+        )
+
+        # extract data vectors (from training data)
+        text_list = list(tex for tex, lab in training_data)
+        x_train: np.ndarray = self._text_enc.encode(texts=text_list)
+
+        # prepare training labels
+        y_train: np.ndarray = self._label_enc.make_categorical(labeled_data=training_data)
+
+        # cleanup
+        del training_data, text_list
+
+        # load or train model
+        self._train_or_load_model(x_train, y_train)
+
+        # cleanup memory
+        del x_train, y_train
+        gc.collect()
+
+        #
+        # testing
+        #
+        # extract test data
+        test_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._base_folder, train_only=False))
+        # evaluate the performance of the model
+        self._test_model(test_data)
+
+        del test_data
+        gc.collect()
+
+    def test_encoding(self, *texts: str):
+        if len(texts) <= 0:
+            logging.warning("Please specify at least one text to encode!")
+            return
+
+        # get training data
+        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._base_folder, train_only=True))
+
+        # prepare the encoders
+        self._prepare_or_load_encoders(
+            training_data=training_data,
+            initialized_text_enc=TokenSequenceEncoder(
+                limit_vocabulary=self._vocabulary_size,
+                default_length=self._max_text_length,
+                pad_beginning=self._pad_beginning,
+                add_start_end_indicators=self._use_start_end_indicators,
+            ),
+        )
+
+        # debug the text encoder
+        logging.info(f"Trying to encode the following texts: {texts}")
+        self._text_enc.print_representations(texts)
+
+    def cross_validation(self, k: int = 10):
+        self._experiment_folder /= f"{k}-fold-cross-validation"
+        # get training data
+        data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._base_folder, train_only=True))
+
+        # prepare the encoders
+        self._prepare_or_load_encoders(
+            training_data=data,
+            initialized_text_enc=TokenSequenceEncoder(
+                limit_vocabulary=self._vocabulary_size,
+                default_length=self._max_text_length),
+        )
+
+        # extract data vectors (from training data)
+        text_list = list(tex for tex, lab in data)
+        x: np.ndarray = self._text_enc.encode(texts=text_list)
+
+        # cleanup memory
+        del text_list
+        gc.collect()
+
+        # prepare training labels
+        y_class_labels: np.ndarray = self._label_enc.integer_class_labels(labeled_data=data)
+        y = self._label_enc.make_categorical(y_labels=y_class_labels)
+
+        from copy import copy
+        from sklearn.model_selection import StratifiedKFold
+        # define 10-fold cross validation test harness
+        k_fold = StratifiedKFold(
+            n_splits=k,
+            shuffle=self._shuffle_training_data is not False,
+            random_state=self._shuffle_training_data if isinstance(self._shuffle_training_data, int) else None
+        )
+
+        results = []
+        histories = []
+        for fold_idx, (train_instances, test_instances) in enumerate(k_fold.split(x, y_class_labels)):
+            logging.info(f"Validating fold {fold_idx + 1} of {k}")
+            fold_config = copy(self)
+            fold_config._experiment_folder /= f"fold_{fold_idx + 1}"
+
+            # split training and validation data and train model
+            fold_config._train_or_load_model(
+                x[train_instances], y[train_instances], validation_data=(x[test_instances], y[test_instances]))
+
+            results.append(fold_config._validate_model(x=x[test_instances], y=y[test_instances]))
+            # noinspection PyUnresolvedReferences
+            histories.append(copy(fold_config._model.history.history))
+
+        # collect results and build statistics
+        stats = statistics(data=results)
+        logging.info("results:")
+        logging.info("\n".join(str(result) for result in results))
+        logging.info("stats:")
+        logging.info(stats)
+
+        write_text_file(
+            file_path=self._experiment_folder / "cross_validation.json",
+            text=json.dumps(stats))
+
+        del data
+        gc.collect()
+        self._plot_all_cross_validation_stats(histories)
+
+    #
+    # plotting utils
+    #
+    def _plot_cross_validation_stats(self, hist_stats: dict, measure: str, longname: str = None):
+        def get_values(stat_name, m=measure):
+            return list(hist_stats[m][idx][stat_name] if idx in hist_stats[m] else None
+                        for idx in range(self._num_epochs))
+
+        if not longname:
+            longname = measure.title()
+
+        std = get_values("std")
+        y_series = [
+            (f"Training (mean)", get_values("mean"), "b-"),
+            (f"Training (std)", list(x+std[i] for i, x in enumerate(get_values("mean"))), "b:"),
+            (f"Training (std-)", list(x-std[i] for i, x in enumerate(get_values("mean"))), "b:", False),
+        ]
+        shaded_areas = [
+            (get_values("min"), get_values("max"), "b", .05),
+            (f"Training (std)", f"Training (std-)", "b", .1),
+        ]
+        if f"val_{measure}" in hist_stats:
+            mean = get_values("mean", f"val_{measure}")
+            std = get_values("std", f"val_{measure}")
+            y_series.append((f"Validation (mean)", mean, "r-"))
+            y_series.append((f"Validation (std)", list(x+std[i] for i, x in enumerate(mean)), "r:"))
+            y_series.append((f"Validation (std-)", list(x-std[i] for i, x in enumerate(mean)), "r:", False))
+            shaded_areas.append((get_values("min", f"val_{measure}"), get_values("max", f"val_{measure}"), "r", .05))
+            shaded_areas.append((f"Validation (std)", f"Validation (std-)", "r", .1))
+
+        plot_to_file(
+            file=self._experiment_folder / f"{longname}.pdf".lower().replace(" ", "_"),
+            x_values=list(range(self._num_epochs)), y_series=y_series,
+            title=f"Training and Validation {longname}", x_label="Epochs", y_label=longname,
+            shaded_areas=shaded_areas
+        )
+
+    def _plot_all_cross_validation_stats(self, histories: List[dict]):
+        hist_stats = statistics(histories, add_raw_values=True)
+        self._plot_cross_validation_stats(hist_stats, "acc", "Accuracy")
+        self._plot_cross_validation_stats(hist_stats, "mean_squared_error", "MSE")
+        self._plot_cross_validation_stats(hist_stats, "loss", "Cross Entropy")
+
+    #
+    # evaluation
+    #
+    def _test_model(self, test_data: List[Tuple[str, int]]):
+        # extract data vectors (from test data)
+        x_test: np.ndarray = self._text_enc.encode(texts=list(text for text, lab in test_data))
+
+        # extract label vectors (from test data)
+        y_test_categories: np.ndarray = self._label_enc.make_categorical(labeled_data=test_data)
+        gc.collect()
+
+        self._validate_model(x=x_test, y=y_test_categories, validation_file_name="text.json")
+
