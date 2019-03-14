@@ -637,14 +637,21 @@ class ImdbClassifier(KerasModelTrainingProgram):
         gc.collect()
 
         #
-        # testing
+        # testing / evaluate the performance of the model based on the test set
         #
         # extract test data
-        test_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._base_folder, train_only=False))
-        # evaluate the performance of the model
-        self._test_model(test_data)
+        def test_data():
+            return imdb_data_generator(base_folder=self._base_folder, train_only=False)
 
-        del test_data
+        # extract data vectors (from test data)
+        x_test: np.ndarray = self._text_enc.encode(texts=list(text for text, lab in test_data()))
+
+        # extract label vectors (from test data)
+        y_test_categories: np.ndarray = self._label_enc.make_categorical(labeled_data=test_data())
+        gc.collect()
+
+        self._validate_model(x=x_test, y=y_test_categories, validation_file_name="text.json")
+
         gc.collect()
 
     def test_encoding(self, *texts: str):
@@ -776,17 +783,3 @@ class ImdbClassifier(KerasModelTrainingProgram):
         self._plot_cross_validation_stats(hist_stats, "acc", "Accuracy")
         self._plot_cross_validation_stats(hist_stats, "mean_squared_error", "MSE")
         self._plot_cross_validation_stats(hist_stats, "loss", "Cross Entropy")
-
-    #
-    # evaluation
-    #
-    def _test_model(self, test_data: List[Tuple[str, int]]):
-        # extract data vectors (from test data)
-        x_test: np.ndarray = self._text_enc.encode(texts=list(text for text, lab in test_data))
-
-        # extract label vectors (from test data)
-        y_test_categories: np.ndarray = self._label_enc.make_categorical(labeled_data=test_data)
-        gc.collect()
-
-        self._validate_model(x=x_test, y=y_test_categories, validation_file_name="text.json")
-
