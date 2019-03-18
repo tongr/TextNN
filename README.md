@@ -49,7 +49,8 @@ The ACL IMDb dataset consists of 25,000 highly polar movie reviews for training,
 
 To run training and evaluation of a LSTM model to predict positive/negative reviews run:
 ```bash
-python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] train-and-test [--validation-split VALIDATION_HOLD_OUT_RATIO]
+python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] \
+    train-and-test [--validation-split VALIDATION_HOLD_OUT_RATIO]
 ```
 where `[IMDB_DATA_FOLDER]` refers to the base folder of the ACL IMDb dataset and the optional
 `VALIDATION_HOLD_OUT_RATIO` (default `0.05`) specified how much data will be hold back for epoch validation during
@@ -69,18 +70,36 @@ Further optional arguments `[OPT_ARGS]` will influence the following areas:
 
 To debug the selected encoding model run:
 ```bash
-python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] test-encoding "This is a test sentence" \
-    "This sentence contains the unknown word klncusuvhacccuuandjccbeddusskxhduscj"
+python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] \
+    test-encoding "This is a test sentence" "This sentence contains the unknown word klcuvhacnjbduskxuscj"
 ```
 Aforementioned optional arguments `[OPT_ARGS]` still apply.
 
 
 To execute *k*-fold cross validation based only on the training data set
 ```bash
-python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] cross-validation [--log-config NUMBER_OF_FOLDS]
+python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] \
+    cross-validation [--log-config NUMBER_OF_FOLDS]
 ```
 Aforementioned optional arguments `[OPT_ARGS]` still apply.
 
+#### Amazon Customer Reviews
+TODO: add description ...
+
+#### YELP reviews
+TODO: add description ...
+
+#### DBpedia categories
+TODO: add description ...
+
+#### Yahoo! Answers
+TODO: add description ...
+
+#### AG news
+TODO: add description ...
+
+#### Sogou news 
+TODO: add description ...
 
 ### Pretrained word embeddings
 Pretrained word embeddings can be used by loading provided vec files. For instance,
