@@ -84,7 +84,7 @@ python ./eval_lstm_imdb.py --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] \
 Aforementioned optional arguments `[OPT_ARGS]` still apply.
 
 #### Amazon Customer Reviews
-TODO: add description ...
+The [Amazon reviews dataset](https://s3.amazonaws.com/amazon-reviews-pds/readme.html) consists of hundred million reviews by millions of Amazon customers over two decades. The reviews express opinions and describe the customer experiences regarding products on the Amazon.com website. Different review subsets are listed here: https://s3.amazonaws.com/amazon-reviews-pds/tsv/index.txt
 
 #### YELP reviews
 TODO: add description ...
