@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Iterable, List, Tuple, Union
+from typing import Iterable, List, Tuple, Union, Generator
 
 from keras.utils.generic_utils import Progbar, time
 
@@ -172,9 +172,27 @@ def read_text_file(file_path: Path) -> str:
     :param file_path: the file path to read
     :return: the contents of the file
     """
+    assert file_path.exists(), f"Unable to find text file {file_path}!"
     with open(str(file_path), 'r', encoding='utf8') as file:
         text = file.read()
     return text
+
+
+def read_text_file_lines(file_path: Path, ignore_first_n_lines: int = 0) -> Iterable[str]:
+    """
+    read lines text file contents
+    :param file_path: the file path to read
+    :param ignore_first_n_lines: the number of lines to be ignored at the beginning of the file
+    :return: the line ontents of the file
+    """
+    assert file_path.exists(), f"Unable to find text file {file_path}!"
+
+    def line_source() -> Generator[str, None, None]:
+        with open(str(file_path), 'r', encoding='utf8') as file:
+            for idx, line in enumerate(file):
+                if not idx < ignore_first_n_lines:
+                    yield line
+    return line_source()
 
 
 def write_text_file(text: str, file_path: Path):
@@ -183,5 +201,6 @@ def write_text_file(text: str, file_path: Path):
     :param text: the text to persist
     :param file_path: the file path to use
     """
+    assert file_path.parent.exists(), f"Unable to find folder {file_path} for output text file!"
     with open(str(file_path), 'w', encoding='utf8') as file:
         file.write(text)
