@@ -1,6 +1,7 @@
+import itertools
 import logging
 from pathlib import Path
-from typing import Iterable, List, Tuple, Union, Generator
+from typing import Iterable, Iterator, List, Tuple, Union, Generator
 
 from keras.utils.generic_utils import Progbar, time
 
@@ -204,3 +205,32 @@ def write_text_file(text: str, file_path: Path):
     assert file_path.parent.exists(), f"Unable to find folder {file_path} for output text file!"
     with open(str(file_path), 'w', encoding='utf8') as file:
         file.write(text)
+
+
+# inspired by the solution of Abhijit: https://stackoverflow.com/a/18836614
+def skip(iterable, at_start=0, at_end=0) -> Iterator:
+    """
+    Enables to skip specific parts at the start or end of an iterable.
+    <b>Please Note!</b> Do not use this method for lists, use the builtin slicing functions instead.
+    :param iterable: the iterable to truncate
+    :param at_start: if positive (`n`), the first `n` elements are ignored in the resulting iterable, if negative (`n`),
+    only the first `n` elements from the iterable will be returned
+    :param at_end: if positive (`n`), the last `n` elements are ignored in the resulting iterable, negative values are
+    not yet supported
+    :return: the truncated iterator
+    """
+    it = iter(iterable)
+    if at_start > 0:
+        it = itertools.islice(it, at_start, None)
+    elif at_start < 0:
+        it = (v for idx, v in enumerate(it) if idx < -at_start)
+
+    if at_end > 0:
+        it, it1 = itertools.tee(it)
+        it1 = itertools.islice(it1, at_end, None)
+        return (next(it) for _ in it1)
+    elif at_end < 0:
+        # FIXME implement it
+        raise NotImplementedError
+
+    return it
