@@ -57,7 +57,7 @@ class ImdbClassifier(KerasModelTrainingProgram):
                  log_config: bool = True,
                  ):
         """
-
+        Initialize a new IMDb experiment.
         :param data_folder: the folder containing the IMDb dataset
         :param vocabulary_size: size of the input vocabulary
         :param max_text_length: the maximum amount of token to konsider during sequence encoding
