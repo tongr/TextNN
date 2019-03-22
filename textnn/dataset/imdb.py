@@ -134,7 +134,7 @@ class ImdbClassifier(KerasModelTrainingProgram):
         del training_data, text_list
 
         # load or train model
-        self._train_or_load_model(x_train, y_train)
+        self._train_or_load_model(x_train, y_train, validation_split=validation_split)
 
         # cleanup memory
         del x_train, y_train
