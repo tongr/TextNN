@@ -2,7 +2,11 @@
 def main():
     import fire
     from textnn.dataset.imdb import ImdbClassifier
-    fire.Fire(ImdbClassifier)
+    from textnn.dataset.amazon import AmazonReviewClassifier
+    fire.Fire({
+        "imdb": ImdbClassifier,
+        "amazon": AmazonReviewClassifier,
+    })
 
 
 if __name__ == "__main__":
