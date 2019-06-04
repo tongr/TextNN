@@ -98,28 +98,6 @@ class ImdbClassifier(KerasModelTrainingProgram):
     #
     # public methods
     #
-    def test_encoding(self, *texts: str):
-        if len(texts) <= 0:
-            logging.warning("Please specify at least one text to encode!")
-            return
-
-        # get training data
-        training_data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._base_folder, train_only=True))
-
-        # prepare the encoders
-        self._prepare_or_load_encoders(
-            training_data=training_data,
-            initialized_text_enc=TokenSequenceEncoder(
-                limit_vocabulary=self._vocabulary_size,
-                default_length=self._max_text_length,
-                pad_beginning=self._pad_beginning,
-                add_start_end_indicators=self._use_start_end_indicators,
-            ),
-        )
-
-        # debug the text encoder
-        logging.info(f"Trying to encode the following texts: {texts}")
-        self._text_enc.print_representations(texts)
 
     def cross_validation(self, k: int = 10):
         self._experiment_folder /= f"{k}-fold-cross-validation"

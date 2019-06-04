@@ -66,10 +66,12 @@ equivalent:
  1. To debug the selected encoding model run:
     ```bash
     python ./run_experiment.py [DATASET] [OPT_ARGS] \
-        test-encoding "This is a test sentence" "This sentence contains the unknown word klcuvhacnjbduskxuscj"
+        test-encoding "This is a test sentence" "This sentence contains the unknown word klcuvhacnjbduskxuscj" \
+       [--show-padding [True|False]] [--show-start-end [True|False]]
     ```
-    This command will create representations for the two example sentences.
-    Aforementioned optional arguments `OPT_ARGS` still apply.
+    This command will create representations for the two example sentences. The parameter `--show-padding` forces the
+    output of `<PAD>` indicators in the re-decoded text and `--show-start-end` en-/disables `<START>` and `<END>`
+    indicators. The aforementioned optional arguments `OPT_ARGS` still apply.
  1. To execute *k*-fold cross validation based only on the training data set
     ```bash
     python ./run_experiment.py [DATASET] [OPT_ARGS] \
@@ -102,9 +104,10 @@ Run experiments:
  1. To debug the selected encoding model run:
     ```bash
     python ./run_experiment.py imdb --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] \
-       test-encoding "This is a test sentence" "This sentence contains the unknown word klcuvhacnjbduskxuscj"
+       test-encoding "This is a test sentence" "This sentence contains the unknown word klcuvhacnjbduskxuscj" \
+       [--show-padding [True|False]] [--show-start-end [True|False]]
     ```
-    The aforementioned optional arguments `OPT_ARGS` still apply.
+    The aforementioned optional arguments `--show-padding [...]`,  `--show-start-end [...]`, and `OPT_ARGS` still apply.
 
  1. To execute *k*-fold cross validation based only on the training data set
     ```bash
@@ -122,11 +125,11 @@ https://s3.amazonaws.com/amazon-reviews-pds/tsv/index.txt
 Preparation:
     Download a dataset (e.g., Amazon Video reviews `amazon_reviews_us_Video_v1_00.tsv.gz`):
     ```
-    wget https://s3.amazonaws.com/amazon-reviews-pds/tsv/amazon_reviews_us_Video_v1_00.tsv.gz
+    wget https://s3.amazonaws.com/amazon-reviews-pds/tsv/amazon_reviews_us_Video_v1_00.tsv.gz -P amazon
     ```
     In the following examples, the indicator `AMAZON_DATA_FILE` refers to the downloaded data file of the Amazon
     dataset:
-    `AMAZON_DATA_FILE=${PWD}/amazon_reviews_us_Video_v1_00.tsv.gz`
+    `AMAZON_DATA_FILE=${PWD}/amazon/amazon_reviews_us_Video_v1_00.tsv.gz`
 
 Run experiments:
  1. To run training and evaluation of a LSTM model to predict positive/negative reviews run:
@@ -136,6 +139,14 @@ Run experiments:
     ```
     where `AMAZON_DATA_FILE` refers to the Amazon dataset file, the aforementioned optional arguments
     `VALIDATION_HOLD_OUT_RATIO` and `OPT_ARGS` still apply.
+
+ 1. To debug the selected encoding model run:
+    ```bash
+    python ./run_experiment.py amazon --data-file [AMAZON_DATA_FILE] [OPT_ARGS] \
+       test-encoding "This is a test sentence" "This sentence contains the unknown word klcuvhacnjbduskxuscj" \
+       [--show-padding [True|False]] [--show-start-end [True|False]]
+    ```
+    The aforementioned optional arguments `--show-padding [...]`,  `--show-start-end [...]`, and `OPT_ARGS` still apply.
 
 #### YELP reviews
 TODO: add description ...

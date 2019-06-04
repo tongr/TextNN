@@ -248,7 +248,7 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram, metaclass=ABCMeta):
         any model metrics on this data at the end of each epoch. The validation data is selected from the last samples
         in the `x` and `y` data provided, before shuffling.
         """
-        print(f"validation-split {validation_split}")
+        logging.debug(f"validation-split {validation_split}")
         if validation_split:
             self._experiment_folder /= f"validation-split-{validation_split}"
         #
@@ -301,6 +301,36 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram, metaclass=ABCMeta):
         self._validate_model(x=x_test, y=y_test_categories, validation_file_name="text.json")
 
         gc.collect()
+
+    def test_encoding(self, *texts: str, show_padding=False, show_start_end=False):
+        """
+        Encode a given list of texts based on the encoder of this experiment.
+        :param texts: Lists of text to be encoded / decoded.
+        :param show_padding: Show the <PAD> indicators in the decoded version of the encoded text
+        :param show_start_end: Show <START> and <END> indicators in the decoded version of the encoded text
+        """
+        if len(texts) <= 0:
+            logging.warning("Please specify at least one text to encode!")
+            return
+
+        # get training data
+        training_data: List[Tuple[str, int]] = list(self._get_data(test_set=False))
+
+        # prepare the encoders
+        self._prepare_or_load_encoders(
+            training_data=training_data,
+            initialized_text_enc=TokenSequenceEncoder(
+                limit_vocabulary=self._vocabulary_size,
+                default_length=self._max_text_length,
+                pad_beginning=self._pad_beginning,
+                add_start_end_indicators=self._use_start_end_indicators,
+            ),
+        )
+
+        # debug the text encoder
+        logging.info(f"Trying to encode the following texts: {texts}")
+        self._text_enc.print_representations(example_texts=texts, print_function=logging.info,
+                                             show_padding=show_padding, show_start_end=show_start_end)
 
     #
     # Utilities
