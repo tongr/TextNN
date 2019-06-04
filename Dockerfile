@@ -11,7 +11,8 @@ RUN apt-get -qq update && apt-get install -y --no-install-recommends curl bzip2 
 # create conda environment.yml and add it to the path (pull the environment name out of the environment.yml)
 # inspired by https://medium.com/@chadlagore/conda-environments-with-docker-82cdc9d25754
 ADD environment.yml /tmp/environment.yml
-RUN /opt/conda/bin/conda env create -f /tmp/environment.yml &&  \
+RUN /opt/conda/bin/conda env create -f /tmp/environment.yml && \
+    /opt/conda/bin/conda clean --all --yes && \
     echo "source /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
     echo "conda activate $(head -1 /tmp/environment.yml | cut -d' ' -f2)" >> ~/.bashrc
 
