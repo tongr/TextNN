@@ -94,32 +94,3 @@ class ImdbClassifier(KerasModelTrainingProgram):
 
     def _get_data(self, test_set: bool) -> Iterable[Tuple[str, int]]:
         return imdb_data_generator(base_folder=self._base_folder, train_only=not test_set)
-
-    #
-    # public methods
-    #
-
-    def cross_validation(self, k: int = 10):
-        self._experiment_folder /= f"{k}-fold-cross-validation"
-        # get training data
-        data: List[Tuple[str, int]] = list(imdb_data_generator(base_folder=self._base_folder, train_only=True))
-
-        # prepare the encoders
-        self._prepare_or_load_encoders(
-            training_data=data,
-            initialized_text_enc=TokenSequenceEncoder(
-                limit_vocabulary=self._vocabulary_size,
-                default_length=self._max_text_length),
-        )
-
-        # extract data vectors (from training data)
-        text_list = list(tex for tex, lab in data)
-        x: np.ndarray = self._text_enc.encode(texts=text_list)
-
-        # prepare training labels
-        y_class_labels: np.ndarray = self._label_enc.integer_class_labels(labeled_data=data)
-
-        # cleanup memory
-        del text_list, data
-        gc.collect()
-        self._cross_validation(x=x, y_class_labels=y_class_labels, k=k)

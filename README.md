@@ -148,6 +148,13 @@ Run experiments:
     ```
     The aforementioned optional arguments `--show-padding [...]`,  `--show-start-end [...]`, and `OPT_ARGS` still apply.
 
+ 1. To execute *k*-fold cross validation based only on the training data set
+    ```bash
+    python ./run_experiment.py imdb --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] \
+        cross-validation [--k NUMBER_OF_FOLDS]
+    ```
+    The aforementioned optional arguments `NUMBER_OF_FOLDS` and `OPT_ARGS` still apply.
+
 #### YELP reviews
 TODO: add description ...
 

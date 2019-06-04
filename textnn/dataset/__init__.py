@@ -332,6 +332,36 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram, metaclass=ABCMeta):
         self._text_enc.print_representations(example_texts=texts, print_function=logging.info,
                                              show_padding=show_padding, show_start_end=show_start_end)
 
+    def cross_validation(self, k: int = 10):
+        """
+        Run k-fold cross validation based on the training data (excluding the dataset's test data)
+        :param k: Number of folds to use for the cross-validation.
+        """
+        self._experiment_folder /= f"{k}-fold-cross-validation"
+
+        # get cross validation data (training data only, no test set)
+        cross_validation_data: List[Tuple[str, int]] = list(self._get_data(test_set=False))
+
+        # prepare the encoders
+        self._prepare_or_load_encoders(
+            training_data=cross_validation_data,
+            initialized_text_enc=TokenSequenceEncoder(
+                limit_vocabulary=self._vocabulary_size,
+                default_length=self._max_text_length),
+        )
+
+        # extract data vectors (from cross-validation data)
+        text_list = list(tex for tex, lab in cross_validation_data)
+        x: np.ndarray = self._text_enc.encode(texts=text_list)
+
+        # prepare training labels
+        y_class_labels: np.ndarray = self._label_enc.integer_class_labels(labeled_data=cross_validation_data)
+
+        # cleanup memory
+        del text_list, cross_validation_data
+        gc.collect()
+        self._cross_validation(x=x, y_class_labels=y_class_labels, k=k)
+
     #
     # Utilities
     #

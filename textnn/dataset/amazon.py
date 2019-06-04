@@ -98,6 +98,3 @@ class AmazonReviewClassifier(KerasModelTrainingProgram):
             return skip(amazon_binary_review_generator(self._data_file), at_start=self._test_set_skip)
 
         return skip(amazon_binary_review_generator(self._data_file), at_start=-self._test_set_skip)
-
-    #
-    #
