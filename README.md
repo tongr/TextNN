@@ -84,13 +84,13 @@ equivalent:
 The ACL IMDb dataset consists of 25,000 highly polar movie reviews for training, and 25,000 for testing and can be found 
 [here](http://ai.stanford.edu/~amaas/data/sentiment/) ([alt. here](https://www.kaggle.com/pankrzysiu/keras-imdb)).
 
-Preparation:
-   Download dataset and extract it in the aclImdb subfolder.
-   ```bash
-   curl http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz | tar -xz
-   ```
-   In the following examples, the indicator `IMDB_DATA_FOLDER` refers to the base folder of the ACL IMDb dataset:
-   `IMDB_DATA_FOLDER=${PWD}/aclImdb/`
+**Preparation:**
+Download the dataset and extract it in the aclImdb subfolder.
+```bash
+curl http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz | tar -xz
+```
+In the following examples, the indicator `IMDB_DATA_FOLDER` refers to the base folder of the ACL IMDb dataset:
+`IMDB_DATA_FOLDER=${PWD}/aclImdb/`
 
 Run experiments:
  1. To run training and evaluation of a LSTM model to predict positive/negative reviews run:
@@ -122,14 +122,14 @@ reviews by millions of Amazon customers over two decades. The reviews express op
 experiences regarding products on the Amazon.com website. Different review subsets are listed here:
 https://s3.amazonaws.com/amazon-reviews-pds/tsv/index.txt
 
-Preparation:
-    Download a dataset (e.g., Amazon Video reviews `amazon_reviews_us_Video_v1_00.tsv.gz`):
-    ```
-    wget https://s3.amazonaws.com/amazon-reviews-pds/tsv/amazon_reviews_us_Video_v1_00.tsv.gz -P amazon
-    ```
-    In the following examples, the indicator `AMAZON_DATA_FILE` refers to the downloaded data file of the Amazon
-    dataset:
-    `AMAZON_DATA_FILE=${PWD}/amazon/amazon_reviews_us_Video_v1_00.tsv.gz`
+**Preparation:**
+Download a dataset (e.g., Amazon Video reviews `amazon_reviews_us_Video_v1_00.tsv.gz`):
+```
+wget https://s3.amazonaws.com/amazon-reviews-pds/tsv/amazon_reviews_us_Video_v1_00.tsv.gz -P amazon
+```
+In the following examples, the indicator `AMAZON_DATA_FILE` refers to the downloaded data file of the Amazon
+dataset:
+`AMAZON_DATA_FILE=${PWD}/amazon/amazon_reviews_us_Video_v1_00.tsv.gz`
 
 Run experiments:
  1. To run training and evaluation of a LSTM model to predict positive/negative reviews run:
@@ -150,13 +150,45 @@ Run experiments:
 
  1. To execute *k*-fold cross validation based only on the training data set
     ```bash
-    python ./run_experiment.py imdb --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] \
+    python ./run_experiment.py amazon --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] \
         cross-validation [--k NUMBER_OF_FOLDS]
     ```
     The aforementioned optional arguments `NUMBER_OF_FOLDS` and `OPT_ARGS` still apply.
 
 #### YELP reviews
-TODO: add description ...
+The [YELP reviews dataset](https://www.yelp.com/dataset) consists of approx. 6 million reviews for 200k businesses. The
+reviews express opinions and describe the customer experiences collected on [www.yelp.com](https://www.yelp.com).
+
+
+**Preparation:**
+Download the dataset and extract the `review.json`. In the following examples, the indicator `YELP_DATA_FILE` refers to
+the extracted `review.json` file.
+
+
+Run experiments:
+ 1. To run training and evaluation of a LSTM model to predict positive/negative reviews run:
+    ```bash
+    python ./run_experiment.py yelp --data-file [YELP_DATA_FILE] [OPT_ARGS] \
+        train-and-test [--validation-split VALIDATION_HOLD_OUT_RATIO]
+    ```
+    where `YELP_DATA_FILE` refers to the YELP dataset file, the aforementioned optional arguments
+    `VALIDATION_HOLD_OUT_RATIO` and `OPT_ARGS` still apply.
+
+ 1. To debug the selected encoding model run:
+    ```bash
+    python ./run_experiment.py yelp --data-file [YELP_DATA_FILE] [OPT_ARGS] \
+       test-encoding "This is a test sentence" "This sentence contains the unknown word klcuvhacnjbduskxuscj" \
+       [--show-padding [True|False]] [--show-start-end [True|False]]
+    ```
+    The aforementioned optional arguments `--show-padding [...]`,  `--show-start-end [...]`, and `OPT_ARGS` still apply.
+
+ 1. To execute *k*-fold cross validation based only on the training data set
+    ```bash
+    python ./run_experiment.py yelp --data-folder [IMDB_DATA_FOLDER] [OPT_ARGS] \
+        cross-validation [--k NUMBER_OF_FOLDS]
+    ```
+    The aforementioned optional arguments `NUMBER_OF_FOLDS` and `OPT_ARGS` still apply.
+
 
 #### DBpedia categories
 TODO: add description ...

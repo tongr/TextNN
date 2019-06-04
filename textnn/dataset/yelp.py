@@ -1,4 +1,5 @@
 import logging
+import json
 from pathlib import Path
 from typing import Iterable, Tuple, Union
 
@@ -6,44 +7,40 @@ from textnn.dataset import KerasModelTrainingProgram
 from textnn.utils import read_text_file_lines as read_lines, skip
 
 
-def amazon_star_rating_generator(data_file: Path) -> Iterable[Tuple[str, int]]:
+def yelp_star_rating_generator(data_file: Path) -> Iterable[Tuple[str, float]]:
     """
-    Generate a text to star-rating tuples from a review tsv file.
+    Generate a text to star-rating tuples from a review.json file.
     :param data_file: the tsv file containing the reviews
     :return: an iterable over the reviews from `data_file`
     """
-    def get_text_and_label(line: str) -> Tuple[str, int]:
-        fields = line.split("\t")
-        return " ".join(fields[12:14]), int(fields[7])
+    def get_text_and_label(line: str) -> Tuple[str, float]:
+        data = json.loads(line)
+        return data["text"], float(data["stars"])
 
-    is_gzip = data_file.name.endswith('.gz') or data_file.name.endswith('.gzip')
-
-    return (get_text_and_label(line) for line in read_lines(file_path=data_file, ignore_first_n_lines=1, gzip=is_gzip))
+    return (get_text_and_label(line) for line in read_lines(file_path=data_file))
 
 
-def amazon_binary_review_generator(data_file: Path, label_3_stars_as=None,
-                                   ) -> Iterable[Tuple[str, int]]:
+def yelp_binary_review_generator(data_file: Path, label_3_stars_as=None) -> Iterable[Tuple[str, int]]:
     """
-    Generate a text to binary-label tuples from a review tsv file.
+    Generate a text to binary-label tuples from a review.json file.
     :param data_file: the tsv file containing the reviews
     :param label_3_stars_as: specify the binary label for 3-star reviews (if `None`, 3-star reviews are going to be
     ignored)
     :return: an iterable over the reviews from `data_file`
     """
     def stars_to_binary(rating):
-        if rating == 3:
+        if rating == 3.0:
             return label_3_stars_as
-        return 0 if rating < 3 else 1
+        return 0 if rating < 3.0 else 1
 
     # transform each rating according to stars_to_binary
-    binary_ratings = ((text, stars_to_binary(stars)) for text, stars in amazon_star_rating_generator(
-        data_file=data_file))
+    binary_ratings = ((text, stars_to_binary(stars)) for text, stars in yelp_star_rating_generator(data_file=data_file))
 
     # remove None-labels
     return filter(lambda tup: tup[1] is not None, binary_ratings)
 
 
-class AmazonReviewClassifier(KerasModelTrainingProgram):
+class YelpReviewClassifier(KerasModelTrainingProgram):
     def __init__(self, data_file, vocabulary_size: int = 4096, max_text_length: int = 512,
                  pad_beginning: bool = True, use_start_end_indicators: bool = True,
                  embeddings: Union[int, str, Path] = 16, update_embeddings: bool = True,
@@ -54,8 +51,8 @@ class AmazonReviewClassifier(KerasModelTrainingProgram):
                  log_config: bool = True,
                  ):
         """
-        Initialize a new Amazon product review experiment.
-        :param data_file: the file containing the Amazon review data
+        Initialize a new YELP review experiment.
+        :param data_file: the file containing the YELP review data (`review.json`)
         :param vocabulary_size: size of the input vocabulary
         :param max_text_length: the maximum amount of token to consider during sequence encoding
         :param pad_beginning: if True, add padding at start and end of an encoded token sequence
@@ -96,6 +93,6 @@ class AmazonReviewClassifier(KerasModelTrainingProgram):
 
     def _get_data(self, test_set: bool) -> Iterable[Tuple[str, int]]:
         if not test_set:
-            return skip(amazon_binary_review_generator(self._data_file), at_start=self._test_set_skip)
+            return skip(yelp_binary_review_generator(self._data_file), at_start=self._test_set_skip)
 
-        return skip(amazon_binary_review_generator(self._data_file), at_start=-self._test_set_skip)
+        return skip(yelp_binary_review_generator(self._data_file), at_start=-self._test_set_skip)

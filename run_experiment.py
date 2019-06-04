@@ -3,9 +3,11 @@ def main():
     import fire
     from textnn.dataset.imdb import ImdbClassifier
     from textnn.dataset.amazon import AmazonReviewClassifier
+    from textnn.dataset.yelp import YelpReviewClassifier
     fire.Fire({
         "imdb": ImdbClassifier,
         "amazon": AmazonReviewClassifier,
+        "yelp": YelpReviewClassifier,
     })
 
 
