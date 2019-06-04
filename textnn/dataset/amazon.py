@@ -1,13 +1,9 @@
-import gc
 import logging
-import numpy as np
-
 from pathlib import Path
-from typing import Iterable, Tuple, Union, List
+from typing import Iterable, Tuple, Union
 
 from textnn.dataset import KerasModelTrainingProgram
 from textnn.utils import read_text_file_lines as read_lines, skip
-from textnn.utils.encoding.text import TokenSequenceEncoder
 
 
 def amazon_star_rating_generator(data_file: Path) -> Iterable[Tuple[str, int]]:
@@ -20,7 +16,9 @@ def amazon_star_rating_generator(data_file: Path) -> Iterable[Tuple[str, int]]:
         fields = line.split("\t")
         return " ".join(fields[12:14]), int(fields[7])
 
-    return (get_text_and_label(line) for line in read_lines(file_path=data_file, ignore_first_n_lines=1))
+    is_gzip = data_file.name.endswith('.gz') or data_file.name.endswith('.gzip')
+
+    return (get_text_and_label(line) for line in read_lines(file_path=data_file, ignore_first_n_lines=1, gzip=is_gzip))
 
 
 def amazon_binary_review_generator(data_file: Path, label_3_stars_as=None,
@@ -49,15 +47,16 @@ class AmazonReviewClassifier(KerasModelTrainingProgram):
                  pad_beginning: bool = True, use_start_end_indicators: bool = True,
                  embeddings: Union[int, str, Path] = 16, update_embeddings: bool = True,
                  layer_definitions: str = None,
-                 batch_size: int = 1024, num_epochs: int = 25, learning_rate: float = 0.001, learning_decay: float = 0.,
+                 batch_size: int = 1024, num_epochs: int = 100,
+                 learning_rate: float = 0.001, learning_decay: float = 0.,
                  shuffle_training_data: Union[int, bool] = 113,
                  log_config: bool = True,
                  ):
         """
         Initialize a new Amazon product review experiment.
-        :param data_folder: the folder containing the IMDb dataset
+        :param data_file: the file containing the Amazon review data
         :param vocabulary_size: size of the input vocabulary
-        :param max_text_length: the maximum amount of token to konsider during sequence encoding
+        :param max_text_length: the maximum amount of token to consider during sequence encoding
         :param pad_beginning: if True, add padding at start and end of an encoded token sequence
         :param use_start_end_indicators: if True, use reserved indicator token `<START>` and `<END>` during token
         sequence encoding
@@ -94,75 +93,11 @@ class AmazonReviewClassifier(KerasModelTrainingProgram):
         if log_config:
             logging.info(f"{self.__class__.__name__}-configuration:\n{self.config}")
 
-    def _get_data(self, training_set: bool) -> Iterable[Tuple[str, int]]:
-        if training_set:
+    def _get_data(self, test_set: bool) -> Iterable[Tuple[str, int]]:
+        if not test_set:
             return skip(amazon_binary_review_generator(self._data_file), at_start=self._test_set_skip)
 
         return skip(amazon_binary_review_generator(self._data_file), at_start=-self._test_set_skip)
 
     #
-    # public methods
     #
-    def train_and_test(self, validation_split: float = .05):
-        """
-        Train a model (using epoch validation based on `validation_split`) and test it's performance on the independent
-        data test set.
-        :param validation_split: Float between 0 and 1. Fraction of the training data to be used as validation data. The
-        model will set apart this fraction of the training data, will not train on it, and will evaluate the loss and
-        any model metrics on this data at the end of each epoch. The validation data is selected from the last samples
-        in the `x` and `y` data provided, before shuffling.
-        """
-        print(f"validation-split {validation_split}")
-        if validation_split:
-            self._experiment_folder /= f"validation-split-{validation_split}"
-        #
-        # training
-        #
-        # get training data
-        training_data: List[Tuple[str, int]] = list(self._get_data(training_set=True))
-
-        # prepare the encoders
-        self._prepare_or_load_encoders(
-            training_data=training_data,
-            initialized_text_enc=TokenSequenceEncoder(
-                limit_vocabulary=self._vocabulary_size,
-                default_length=self._max_text_length,
-                pad_beginning=self._pad_beginning,
-                add_start_end_indicators=self._use_start_end_indicators,
-            ),
-        )
-
-        # extract data vectors (from training data)
-        text_list = list(tex for tex, lab in training_data)
-        x_train: np.ndarray = self._text_enc.encode(texts=text_list)
-
-        # prepare training labels
-        y_train: np.ndarray = self._label_enc.make_categorical(labeled_data=training_data)
-
-        # cleanup
-        del training_data, text_list
-
-        # load or train model
-        self._train_or_load_model(x_train, y_train, validation_split=validation_split)
-
-        # cleanup memory
-        del x_train, y_train
-        gc.collect()
-
-        #
-        # testing / evaluate the performance of the model based on the test set
-        #
-
-        # extract data vectors (from test data)
-        x_test: np.ndarray = self._text_enc.encode(
-            texts=list(text for text, lab in self._get_data(training_set=False)))
-
-        # extract label vectors (from test data)
-        y_test_categories: np.ndarray = self._label_enc.make_categorical(
-            labeled_data=self._get_data(training_set=False))
-        gc.collect()
-
-        self._validate_model(x=x_test, y=y_test_categories, validation_file_name="text.json")
-
-        gc.collect()
-

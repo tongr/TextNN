@@ -179,20 +179,28 @@ def read_text_file(file_path: Path) -> str:
     return text
 
 
-def read_text_file_lines(file_path: Path, ignore_first_n_lines: int = 0) -> Iterable[str]:
+def read_text_file_lines(file_path: Path, ignore_first_n_lines: int = 0, gzip: bool = False) -> Iterable[str]:
     """
     read lines text file contents
     :param file_path: the file path to read
     :param ignore_first_n_lines: the number of lines to be ignored at the beginning of the file
+    :param gzip: if True, the reader expects a gzipped input file
     :return: the line ontents of the file
     """
     assert file_path.exists(), f"Unable to find text file {file_path}!"
-
-    def line_source() -> Generator[str, None, None]:
-        with open(str(file_path), 'r', encoding='utf8') as file:
-            for idx, line in enumerate(file):
-                if not idx < ignore_first_n_lines:
-                    yield line
+    if gzip:
+        def line_source() -> Generator[str, None, None]:
+            import gzip
+            with gzip.open(str(file_path), 'rt', encoding='utf8') as file:
+                for idx, line in enumerate(file):
+                    if not idx < ignore_first_n_lines:
+                        yield line
+    else:
+        def line_source() -> Generator[str, None, None]:
+            with open(str(file_path), 'r', encoding='utf8') as file:
+                for idx, line in enumerate(file):
+                    if not idx < ignore_first_n_lines:
+                        yield line
     return line_source()
 
 
