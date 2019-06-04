@@ -3,8 +3,10 @@ import hashlib
 import json
 import logging
 import pickle
+
+from abc import abstractmethod, ABCMeta
 from pathlib import PurePath, Path
-from typing import List, Tuple, Union, Iterable, Any
+from typing import List, Tuple, Union, Iterable, Any, Optional
 
 from itertools import chain
 from keras import Sequential
@@ -16,7 +18,7 @@ from keras.optimizers import Adam
 
 from textnn.utils import plot_to_file, join_name, write_text_file
 from textnn.utils.encoding.label import LabelEncoder
-from textnn.utils.encoding.text import AbstractTokenEncoder, VectorFileEmbeddingMatcher
+from textnn.utils.encoding.text import AbstractTokenEncoder, VectorFileEmbeddingMatcher, TokenSequenceEncoder
 
 
 #
@@ -104,6 +106,7 @@ class BaseSequenceEncodingProgram:
 
     @property
     def _config_parameters(self) -> Iterable[Tuple[str, Any]]:
+        # noinspection PyTypeChecker
         kv: Iterable[Tuple[str, Any]] = chain(
             self.__dict__.items(),
             [("_encoder_folder", self._encoder_folder)]
@@ -177,7 +180,7 @@ class BaseSequenceEncodingProgram:
         self._text_enc, self._label_enc = text_enc, label_enc
 
 
-class KerasModelTrainingProgram(BaseSequenceEncodingProgram):
+class KerasModelTrainingProgram(BaseSequenceEncodingProgram, metaclass=ABCMeta):
     def __init__(self, base_folder, vocabulary_size: int, max_text_length: int,
                  pad_beginning: bool, use_start_end_indicators: bool,
                  embeddings: Union[int, str, PurePath], update_embeddings: bool,
@@ -219,12 +222,15 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram):
         self._learning_decay = learning_decay
         self._shuffle_training_data = shuffle_training_data
 
-        self._model: Sequential = None
-        self._text_enc: AbstractTokenEncoder = None
-        self._label_enc: LabelEncoder = None
+        self._model: Optional[Sequential] = None
+        self._text_enc: Optional[AbstractTokenEncoder] = None
+        self._label_enc: Optional[LabelEncoder] = None
         self._layers, self._layer_definitions = self._parse_layer_definitions(
             layer_definitions if layer_definitions else "Dropout(0.5)|LSTM(8,dropout=0.5)")
 
+    #
+    # public methods
+    #
     def reset(self):
         super().reset()
         self._model = None
@@ -232,6 +238,81 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram):
         # clean keras/tensorflow backend
         clear_keras_session()
         gc.collect()
+
+    def train_and_test(self, validation_split: float = .05):
+        """
+        Train a model (using epoch validation based on `validation_split`) and test it's performance on the independent
+        data test set.
+        :param validation_split: Float between 0 and 1. Fraction of the training data to be used as validation data. The
+        model will set apart this fraction of the training data, will not train on it, and will evaluate the loss and
+        any model metrics on this data at the end of each epoch. The validation data is selected from the last samples
+        in the `x` and `y` data provided, before shuffling.
+        """
+        print(f"validation-split {validation_split}")
+        if validation_split:
+            self._experiment_folder /= f"validation-split-{validation_split}"
+        #
+        # training
+        #
+        # get training data
+        training_data: List[Tuple[str, int]] = list(self._get_data(test_set=False))
+
+        # prepare the encoders
+        self._prepare_or_load_encoders(
+            training_data=training_data,
+            initialized_text_enc=TokenSequenceEncoder(
+                limit_vocabulary=self._vocabulary_size,
+                default_length=self._max_text_length,
+                pad_beginning=self._pad_beginning,
+                add_start_end_indicators=self._use_start_end_indicators,
+            ),
+        )
+
+        # extract data vectors (from training data)
+        text_list = list(tex for tex, lab in training_data)
+        x_train: np.ndarray = self._text_enc.encode(texts=text_list)
+
+        # prepare training labels
+        y_train: np.ndarray = self._label_enc.make_categorical(labeled_data=training_data)
+
+        # cleanup
+        del training_data, text_list
+
+        # load or train model
+        self._train_or_load_model(x_train, y_train, validation_split=validation_split)
+
+        # cleanup memory
+        del x_train, y_train
+        gc.collect()
+
+        #
+        # testing / evaluate the performance of the model based on the test set
+        #
+
+        # extract data vectors (from test data)
+        x_test: np.ndarray = self._text_enc.encode(
+            texts=list(text for text, lab in self._get_data(test_set=True)))
+
+        # extract label vectors (from test data)
+        y_test_categories: np.ndarray = self._label_enc.make_categorical(
+            labeled_data=self._get_data(test_set=True))
+        gc.collect()
+
+        self._validate_model(x=x_test, y=y_test_categories, validation_file_name="text.json")
+
+        gc.collect()
+
+    #
+    # Utilities
+    #
+    @abstractmethod
+    def _get_data(self, test_set: bool) -> Iterable[Tuple[str, int]]:
+        """
+        Generate tuples of text-to-label pairs
+        :param test_set: generate tuples for the test set
+        :return: the tuple generator
+        """
+        raise NotImplementedError("Subclasses should implement this!")
 
     #
     # model training and validation
