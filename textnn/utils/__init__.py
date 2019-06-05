@@ -1,7 +1,7 @@
 import itertools
 import logging
 from pathlib import Path
-from typing import Iterable, Iterator, List, Tuple, Union, Generator
+from typing import Iterable, Iterator, List, Tuple, Union, Generator, Optional, Callable
 
 from keras.utils.generic_utils import Progbar, time
 
@@ -22,11 +22,7 @@ class ProgressIterator(Progbar):
         self._progress = 0
 
         if target is None:
-            try:
-                # noinspection PyTypeChecker
-                target = len(iterable)
-            except TypeError:
-                target = None
+            target = FixedLengthIterable.try_get_len(iterable)
         # TODO check further parameter: width = 30, verbose = 1, stateful_metrics = None
         super().__init__(target=target, interval=interval)
         print(description if description is not None else "Processing ...")
@@ -64,6 +60,55 @@ class ProgressIterator(Progbar):
             self._last_update = 0
             self._seen_so_far = self._progress
             self.update(self.target if self.target is not None else self._progress)
+
+
+class FixedLengthIterable(Iterable):
+    """
+    Enables len() attributes for Iterables and Generator sources to facilitate progre
+    """
+    def __init__(self, iterable: Optional[Iterable] = None,
+                 gen_source: Optional[Callable[[], Generator]] = None,
+                 length: Optional[int] = None,
+                 lazy: bool = True):
+        self._iterable = iterable
+        self._gen_source = gen_source
+        self.length = length
+        self._lazy = lazy
+
+    def __len__(self):
+        if self.length is None:
+            if self._lazy:
+                raise TypeError("object has unknown len()")
+            self.length = sum(1 for _ in self)
+        return self.length
+
+    @staticmethod
+    def try_get_len(iterable: Iterable) -> Optional[int]:
+        try:
+            # noinspection PyTypeChecker
+            return len(iterable)
+        except TypeError:
+            return None
+
+    def _new_iter(self):
+        if self._iterable is not None:
+            return iter(self._iterable)
+        return self._gen_source()
+
+    def __iter__(self) -> Iterator:
+        # if the length is unknown, store it while iterating and update the internal state
+        if self.length is None:
+            iterator = self._new_iter()
+
+            def counting_gen():
+                count = 0
+                for x in iterator:
+                    count += 1
+                    yield x
+                self.length = count
+            return counting_gen()
+
+        return self._new_iter()
 
 
 def join_name(name_parts: list, separator: str = "__", ignore_none: bool = True) -> str:
@@ -216,7 +261,7 @@ def write_text_file(text: str, file_path: Path):
 
 
 # inspired by the solution of Abhijit: https://stackoverflow.com/a/18836614
-def skip(iterable, at_start=0, at_end=0) -> Iterator:
+def skip(iterable, at_start=0, at_end=0) -> Union[Iterator, Generator]:
     """
     Enables to skip specific parts at the start or end of an iterable.
     <b>Please Note!</b> Do not use this method for lists, use the builtin slicing functions instead.
