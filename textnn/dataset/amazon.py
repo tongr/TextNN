@@ -39,6 +39,7 @@ def amazon_binary_review_generator(data_file: Path, label_3_stars_as=None) -> Ge
         data_file=data_file))
 
     # remove None-labels
+    # noinspection PyTypeChecker
     return filter(lambda tup: tup[1] is not None, binary_ratings)
 
 

@@ -12,7 +12,8 @@ class LabelEncoder:
                  label_sample_it: Iterable[int] = None):
         if not num_classes:
             if label_sample_it is None:
-                assert labeled_data, "Either `num_classes`, `label_sample_it`, or `labeled_data` parameter required!"
+                assert labeled_data is not None, \
+                    "Either `num_classes`, `label_sample_it`, or `labeled_data` parameter required!"
                 num_classes = max(lab for text, lab in labeled_data) + 1
             else:
                 num_classes = max(lab for lab in label_sample_it) + 1

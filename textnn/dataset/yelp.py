@@ -41,11 +41,12 @@ def yelp_binary_review_generator(data_file: Path, trim_text: int = None, label_3
                                                                                                    trim_text=trim_text))
 
     # remove None-labels
+    # noinspection PyTypeChecker
     return filter(lambda tup: tup[1] is not None, binary_ratings)
 
 
 class YelpReviewClassifier(KerasModelTrainingProgram):
-    def __init__(self, data_file, vocabulary_size: int = 4096, max_text_length: int = 512,
+    def __init__(self, data_file, vocabulary_size: int = 4096, max_text_length: int = 64,
                  pad_beginning: bool = True, use_start_end_indicators: bool = True,
                  embeddings: Union[int, str, Path] = 16, update_embeddings: bool = True,
                  layer_definitions: str = None,

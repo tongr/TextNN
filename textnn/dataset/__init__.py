@@ -101,8 +101,8 @@ class BaseSequenceEncodingProgram:
         self._use_start_end_indicators = use_start_end_indicators
         self._pad_beginning = pad_beginning
 
-        self._text_enc: AbstractTokenEncoder = None
-        self._label_enc: LabelEncoder = None
+        self._text_enc: Optional[AbstractTokenEncoder] = None
+        self._label_enc: Optional[LabelEncoder] = None
 
     @property
     def _config_parameters(self) -> Iterable[Tuple[str, Any]]:
@@ -147,8 +147,8 @@ class BaseSequenceEncodingProgram:
         text_encoder_file = self._encoder_folder / "text-encoder.pickle"
         label_encoder_file = self._encoder_folder / "label-encoder.pickle"
 
-        text_enc: AbstractTokenEncoder = None
-        label_enc: LabelEncoder = None
+        text_enc: Optional[AbstractTokenEncoder] = None
+        label_enc: Optional[LabelEncoder] = None
         if text_encoder_file.exists() and label_encoder_file.exists():
             logging.info(f"Loading encoders from files: {text_encoder_file}, {label_encoder_file}")
             with open(str(text_encoder_file), "rb") as pickle_file:
@@ -407,7 +407,7 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram, metaclass=ABCMeta):
             f"The x and y data matrices need to contain the same number of instances (actual: {len(x)} and {len(y)})!"
         model_file = self._experiment_folder / "keras-model.hd5"
 
-        model: Sequential = None
+        model: Optional[Sequential] = None
         if model_file.exists():
             logging.info(f"Loading models from: {model_file}")
             model: Sequential = load_model(str(model_file))
