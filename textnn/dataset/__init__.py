@@ -16,7 +16,7 @@ from keras.layers import *
 from keras.models import save_model, load_model
 from keras.optimizers import Adam
 
-from textnn.utils import plot_to_file, join_name, write_text_file
+from textnn.utils import plot_to_file, join_name, write_text_file, FixedLengthIterable, ProgressIterator
 from textnn.utils.encoding.label import LabelEncoder
 from textnn.utils.encoding.text import AbstractTokenEncoder, VectorFileEmbeddingMatcher, TokenSequenceEncoder
 
@@ -138,7 +138,7 @@ class BaseSequenceEncodingProgram:
     # prepare encoders
     #
     def _prepare_or_load_encoders(self,
-                                  training_data: List[Tuple[str, int]],
+                                  training_data: Iterable[Tuple[str, int]],
                                   initialized_text_enc: AbstractTokenEncoder,
                                   ) -> None:
         if not self._encoder_folder.exists():
@@ -157,13 +157,14 @@ class BaseSequenceEncodingProgram:
                 label_enc: LabelEncoder = pickle.load(pickle_file)
 
         if not text_enc or not label_enc:
-            text_list = list(tex for tex, lab in training_data)
-            # extract vocab (from training data)
-            text_enc = initialized_text_enc
-            text_enc.prepare(texts=text_list, show_progress=True)
-
             # create label encoder based on training data
-            label_enc = LabelEncoder(labeled_data=training_data)
+            label_enc = LabelEncoder(labeled_data=ProgressIterator(training_data, "Collecting labels ..."))
+
+            # extract vocab (from training data)
+            texts = FixedLengthIterable(gen_source=lambda: (tex for tex, lab in training_data),
+                                        length=FixedLengthIterable.try_get_len(training_data))
+            text_enc = initialized_text_enc
+            text_enc.prepare(texts=texts, show_progress=True)
 
             #
             # serialize data for next time
@@ -174,7 +175,6 @@ class BaseSequenceEncodingProgram:
                 pickle.dump(label_enc, pickle_file)
 
             # cleanup memory
-            del text_list
             gc.collect()
 
         self._text_enc, self._label_enc = text_enc, label_enc
@@ -255,7 +255,7 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram, metaclass=ABCMeta):
         # training
         #
         # get training data
-        training_data: List[Tuple[str, int]] = list(self._get_data(test_set=False))
+        training_data: Iterable[Tuple[str, int]] = self._get_data(test_set=False)
 
         # prepare the encoders
         self._prepare_or_load_encoders(
@@ -268,15 +268,17 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram, metaclass=ABCMeta):
             ),
         )
 
-        # extract data vectors (from training data)
-        text_list = list(tex for tex, lab in training_data)
-        x_train: np.ndarray = self._text_enc.encode(texts=text_list)
-
         # prepare training labels
-        y_train: np.ndarray = self._label_enc.make_categorical(labeled_data=training_data)
+        y_train: np.ndarray = self._label_enc.make_categorical(
+            labeled_data=ProgressIterator(training_data, "Extracting training labels ..."))
+
+        # extract data vectors (from training data)
+        texts = FixedLengthIterable(gen_source=lambda: (tex for tex, lab in training_data),
+                                    length=FixedLengthIterable.try_get_len(training_data))
+        x_train: np.ndarray = self._text_enc.encode(texts=texts)
 
         # cleanup
-        del training_data, text_list
+        gc.collect()
 
         # load or train model
         self._train_or_load_model(x_train, y_train, validation_split=validation_split)
@@ -289,13 +291,18 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram, metaclass=ABCMeta):
         # testing / evaluate the performance of the model based on the test set
         #
 
-        # extract data vectors (from test data)
-        x_test: np.ndarray = self._text_enc.encode(
-            texts=list(text for text, lab in self._get_data(test_set=True)))
+        # get test data
+        test_data: Iterable[Tuple[str, int]] = self._get_data(test_set=True)
 
         # extract label vectors (from test data)
         y_test_categories: np.ndarray = self._label_enc.make_categorical(
-            labeled_data=self._get_data(test_set=True))
+            labeled_data=ProgressIterator(test_data, "Extracting test labels ..."))
+
+        # extract data vectors (from test data)
+        texts = FixedLengthIterable(gen_source=lambda: (tex for tex, lab in test_data),
+                                    length=FixedLengthIterable.try_get_len(test_data))
+        x_test: np.ndarray = self._text_enc.encode(texts=texts)
+
         gc.collect()
 
         self._validate_model(x=x_test, y=y_test_categories, validation_file_name="text.json")
@@ -314,7 +321,7 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram, metaclass=ABCMeta):
             return
 
         # get training data
-        training_data: List[Tuple[str, int]] = list(self._get_data(test_set=False))
+        training_data: Iterable[Tuple[str, int]] = self._get_data(test_set=False)
 
         # prepare the encoders
         self._prepare_or_load_encoders(
@@ -340,7 +347,7 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram, metaclass=ABCMeta):
         self._experiment_folder /= f"{k}-fold-cross-validation"
 
         # get cross validation data (training data only, no test set)
-        cross_validation_data: List[Tuple[str, int]] = list(self._get_data(test_set=False))
+        cross_validation_data: Iterable[Tuple[str, int]] = self._get_data(test_set=False)
 
         # prepare the encoders
         self._prepare_or_load_encoders(
@@ -349,16 +356,16 @@ class KerasModelTrainingProgram(BaseSequenceEncodingProgram, metaclass=ABCMeta):
                 limit_vocabulary=self._vocabulary_size,
                 default_length=self._max_text_length),
         )
+        # prepare training labels
+        y_class_labels: np.ndarray = self._label_enc.integer_class_labels(
+            labeled_data=ProgressIterator(cross_validation_data, "Extracting labels ..."))
 
         # extract data vectors (from cross-validation data)
-        text_list = list(tex for tex, lab in cross_validation_data)
-        x: np.ndarray = self._text_enc.encode(texts=text_list)
-
-        # prepare training labels
-        y_class_labels: np.ndarray = self._label_enc.integer_class_labels(labeled_data=cross_validation_data)
+        texts = FixedLengthIterable(gen_source=lambda: (tex for tex, lab in cross_validation_data),
+                                    length=FixedLengthIterable.try_get_len(cross_validation_data))
+        x: np.ndarray = self._text_enc.encode(texts=texts)
 
         # cleanup memory
-        del text_list, cross_validation_data
         gc.collect()
         self._cross_validation(x=x, y_class_labels=y_class_labels, k=k)
 

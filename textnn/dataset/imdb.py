@@ -1,19 +1,16 @@
-import gc
 import logging
 from pathlib import PurePath, Path
-from typing import List, Tuple, Union, Iterable
-
-import numpy as np
+from typing import Tuple, Union, Generator, Iterable
 
 from textnn.dataset import KerasModelTrainingProgram
-from textnn.utils import read_text_file
-from textnn.utils.encoding.text import TokenSequenceEncoder
+from textnn.utils import read_text_file, FixedLengthIterable
 
 
 #
 # IMDb specific functions
 #
-def imdb_file_ref_generator(base_folder, pos_only: bool = None, train_only: bool = None) -> Iterable[Tuple[Path, int]]:
+def imdb_file_ref_generator(base_folder, pos_only: bool = None, train_only: bool = None,
+                            ) -> Generator[Tuple[Path, int], None, None]:
     from pathlib import Path
     from itertools import chain
     base_folder = Path(base_folder)
@@ -41,7 +38,8 @@ def imdb_file_ref_generator(base_folder, pos_only: bool = None, train_only: bool
     return chain(*result_generators)
 
 
-def imdb_data_generator(base_folder, pos_only: bool = None, train_only: bool = None) -> Iterable[Tuple[str, int]]:
+def imdb_data_generator(base_folder, pos_only: bool = None, train_only: bool = None,
+                        ) -> Generator[Tuple[str, int], None, None]:
     return ((read_text_file(file), lab) for file, lab in imdb_file_ref_generator(base_folder=base_folder,
                                                                                  pos_only=pos_only,
                                                                                  train_only=train_only))
@@ -93,4 +91,6 @@ class ImdbClassifier(KerasModelTrainingProgram):
             logging.info(f"{self.__class__.__name__}-configuration:\n{self.config}")
 
     def _get_data(self, test_set: bool) -> Iterable[Tuple[str, int]]:
-        return imdb_data_generator(base_folder=self._base_folder, train_only=not test_set)
+        def gen_source():
+            return imdb_data_generator(base_folder=self._base_folder, train_only=not test_set)
+        return FixedLengthIterable(gen_source=gen_source)

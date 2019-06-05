@@ -1,12 +1,12 @@
 import logging
 from pathlib import Path
-from typing import Iterable, Tuple, Union
+from typing import Iterable, Tuple, Union, Generator
 
 from textnn.dataset import KerasModelTrainingProgram
-from textnn.utils import read_text_file_lines as read_lines, skip
+from textnn.utils import read_text_file_lines as read_lines, skip, FixedLengthIterable
 
 
-def amazon_star_rating_generator(data_file: Path) -> Iterable[Tuple[str, int]]:
+def amazon_star_rating_generator(data_file: Path) -> Generator[Tuple[str, int], None, None]:
     """
     Generate a text to star-rating tuples from a review tsv file.
     :param data_file: the tsv file containing the reviews
@@ -21,8 +21,7 @@ def amazon_star_rating_generator(data_file: Path) -> Iterable[Tuple[str, int]]:
     return (get_text_and_label(line) for line in read_lines(file_path=data_file, ignore_first_n_lines=1, gzip=is_gzip))
 
 
-def amazon_binary_review_generator(data_file: Path, label_3_stars_as=None,
-                                   ) -> Iterable[Tuple[str, int]]:
+def amazon_binary_review_generator(data_file: Path, label_3_stars_as=None) -> Generator[Tuple[str, int], None, None]:
     """
     Generate a text to binary-label tuples from a review tsv file.
     :param data_file: the tsv file containing the reviews
@@ -95,7 +94,10 @@ class AmazonReviewClassifier(KerasModelTrainingProgram):
             logging.info(f"{self.__class__.__name__}-configuration:\n{self.config}")
 
     def _get_data(self, test_set: bool) -> Iterable[Tuple[str, int]]:
-        if not test_set:
-            return skip(amazon_binary_review_generator(self._data_file), at_start=self._test_set_skip)
+        def data_gen_source():
+            if not test_set:
+                return skip(amazon_binary_review_generator(self._data_file), at_start=self._test_set_skip)
 
-        return skip(amazon_binary_review_generator(self._data_file), at_start=-self._test_set_skip)
+            return skip(amazon_binary_review_generator(self._data_file), at_start=-self._test_set_skip)
+
+        return FixedLengthIterable(gen_source=data_gen_source)

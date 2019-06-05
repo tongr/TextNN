@@ -1,29 +1,32 @@
 import logging
 import json
 from pathlib import Path
-from typing import Iterable, Tuple, Union
+from typing import Iterable, Tuple, Union, Generator
 
 from textnn.dataset import KerasModelTrainingProgram
-from textnn.utils import read_text_file_lines as read_lines, skip
+from textnn.utils import read_text_file_lines as read_lines, skip, FixedLengthIterable
 
 
-def yelp_star_rating_generator(data_file: Path) -> Iterable[Tuple[str, float]]:
+def yelp_star_rating_generator(data_file: Path, trim_text: int = None) -> Generator[Tuple[str, float], None, None]:
     """
     Generate a text to star-rating tuples from a review.json file.
     :param data_file: the tsv file containing the reviews
+    :param trim_text: trim the text attribute to the given number of characters
     :return: an iterable over the reviews from `data_file`
     """
     def get_text_and_label(line: str) -> Tuple[str, float]:
         data = json.loads(line)
-        return data["text"], float(data["stars"])
+        return data["text"][:trim_text] if trim_text else data["text"], float(data["stars"])
 
     return (get_text_and_label(line) for line in read_lines(file_path=data_file))
 
 
-def yelp_binary_review_generator(data_file: Path, label_3_stars_as=None) -> Iterable[Tuple[str, int]]:
+def yelp_binary_review_generator(data_file: Path, trim_text: int = None, label_3_stars_as=None,
+                                 ) -> Generator[Tuple[str, int], None, None]:
     """
     Generate a text to binary-label tuples from a review.json file.
     :param data_file: the tsv file containing the reviews
+    :param trim_text: trim the text attribute to the given number of characters
     :param label_3_stars_as: specify the binary label for 3-star reviews (if `None`, 3-star reviews are going to be
     ignored)
     :return: an iterable over the reviews from `data_file`
@@ -34,7 +37,8 @@ def yelp_binary_review_generator(data_file: Path, label_3_stars_as=None) -> Iter
         return 0 if rating < 3.0 else 1
 
     # transform each rating according to stars_to_binary
-    binary_ratings = ((text, stars_to_binary(stars)) for text, stars in yelp_star_rating_generator(data_file=data_file))
+    binary_ratings = ((text, stars_to_binary(stars)) for text, stars in yelp_star_rating_generator(data_file=data_file,
+                                                                                                   trim_text=trim_text))
 
     # remove None-labels
     return filter(lambda tup: tup[1] is not None, binary_ratings)
@@ -92,7 +96,13 @@ class YelpReviewClassifier(KerasModelTrainingProgram):
             logging.info(f"{self.__class__.__name__}-configuration:\n{self.config}")
 
     def _get_data(self, test_set: bool) -> Iterable[Tuple[str, int]]:
-        if not test_set:
-            return skip(yelp_binary_review_generator(self._data_file), at_start=self._test_set_skip)
+        def gen_source():
+            if not test_set:
+                start_at = self._test_set_skip
+            else:
+                start_at = -self._test_set_skip
 
-        return skip(yelp_binary_review_generator(self._data_file), at_start=-self._test_set_skip)
+            return skip(yelp_binary_review_generator(self._data_file, trim_text=self._max_text_length*10),
+                        at_start=start_at)
+
+        return FixedLengthIterable(gen_source=gen_source)
