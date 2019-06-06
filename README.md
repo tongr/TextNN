@@ -25,6 +25,17 @@ and running the image in interactive mode (conda environment automatically loade
 ```bash
 docker run --rm --runtime=nvidia -v "${PWD}:/code" -w "/code" -it textnn
 ```
+Please note, the code directory is bound to the container as a volume. Changes in the container reflect on the code
+directory of the host system.
+
+To disable GPU support build:
+```bash
+docker build --target=env-and-code -t textnn .
+```
+and run:
+```bash
+docker run --rm -v "${PWD}:/code" -w "/code" -it textnn
+```
 
 ### AWS
 The recommended EC2 setup (e.g., `g3s.xlarge`) is based on `Deep Learning AMI (Ubuntu) Version 21.2`

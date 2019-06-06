@@ -1,8 +1,5 @@
 # project files
-.git
 .idea
-Dockerfile
-README.md
 
 # data files
 data/*
@@ -10,9 +7,9 @@ data/*
 /tmp/*
 
 # Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
 
 # Unit test / coverage reports
 htmlcov/
