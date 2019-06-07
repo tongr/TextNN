@@ -1,8 +1,12 @@
-##
-## base image: Ubuntu 18.04
-##
+#
+# base image: Ubuntu 18.04
+#
 FROM ubuntu:18.04 AS base
-
+# add default image labels
+LABEL maintainer="tongr@github" \
+    org.label-schema.schema-version="1.0" \
+    org.label-schema.name="textnn" \
+    org.label-schema.vcs-url="https://github.com/tongr/TextNN"
 
 #
 # conda support
@@ -34,16 +38,21 @@ RUN /opt/conda/bin/conda env update --name base --file /tmp/environment.yml && \
     /opt/conda/bin/conda clean --all --yes
 
 #
-# code & repository
+# code & environment
 #
 FROM env AS env-and-code
 ADD . /code
 
-##
-## base image w/ CUDA support (18.04)
-##
+#
+# base image w/ CUDA support (18.04)
+#
 # requires nvidia-docker v2
 FROM nvidia/cuda:10.0-cudnn7-runtime-ubuntu18.04 as gpu-base
+# add default image labels
+LABEL maintainer="tongr@github" \
+    org.label-schema.schema-version="1.0" \
+    org.label-schema.name="textnn" \
+    org.label-schema.vcs-url="https://github.com/tongr/TextNN"
 
 #
 # gpu + conda environment
@@ -59,7 +68,7 @@ RUN ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
     /opt/conda/bin/conda install --yes tensorflow-gpu && /opt/conda/bin/conda clean --all --yes
 
 #
-# gpu + conda environment + code
+# gpu + code + environment
 #
 FROM gpu-env AS gpu-env-and-code
 COPY --from=env-and-code /code /code
