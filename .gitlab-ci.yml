@@ -1,0 +1,6 @@
+image: registry.gitlab.com/tongr/textnn/cpu:latest
+
+tests:
+  stage: test
+  script:
+    - pytest --cov -vv
