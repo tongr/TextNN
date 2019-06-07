@@ -4,3 +4,4 @@ tests:
   stage: test
   script:
     - pytest --cov -vv
+  coverage: '/TOTAL.*?(\d+%)$/'
