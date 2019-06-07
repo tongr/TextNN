@@ -19,36 +19,42 @@ Before using the code, please install the necessary software dependencies.
 ### Docker
 Running the code in a docker container can be achieved by building the image:
 ```bash
-docker build -t textnn .
+docker build --target=env-and-code -t textnn .
 ```
 and running the image in interactive mode (conda environment automatically loaded)
 ```bash
-docker run --rm --runtime=nvidia -v "${PWD}:/code" -w "/code" -it textnn
+docker run --rm -it textnn
 ```
-Please note, the code directory is bound to the container as a volume. Changes in the container reflect on the code
-directory of the host system.
+To be able to reflect current code changes inside the container, you can bind the current directory as code volume:
 
-To disable GPU support build:
 ```bash
-docker build --target=env-and-code -t textnn .
+docker run --rm -v "${PWD}:/code" -it textnn
+```
+Please note, changes in the container reflect on the code directory of the host system.
+
+#### Docker w/ GPU support
+To enable GPU support build with:
+```bash
+docker build --target=gpu-env-and-code -t textnn .
 ```
 and run:
 ```bash
-docker run --rm -v "${PWD}:/code" -w "/code" -it textnn
+docker run --rm --runtime=nvidia -it textnn
 ```
 
-### AWS
+#### Docker on AWS
 The recommended EC2 setup (e.g., `g3s.xlarge`) is based on `Deep Learning AMI (Ubuntu) Version 21.2`
 (ami-0e9085a8d461c2d01) with an increased volumne of 120GB or more. It is recommended to execute code via
 [Docker](#Docker), by setting up the project and creating an image:
 ```bash
 git clone https://github.com/tongr/TextNN && cd TextNN && \
-    docker build -t textnn .
+    docker build --target=gpu-env-and-code -t textnn .
 ```
 And running the experiments inside the container:
 ```bash
-docker run --rm --runtime=nvidia -v "${PWD}:/code" -w "/code" -it textnn
+docker run --rm --runtime=nvidia -v "${PWD}:/code" -it textnn
 ```
+
 
 ## Datasets
 

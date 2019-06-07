@@ -41,7 +41,20 @@ RUN /opt/conda/bin/conda env update --name base --file /tmp/environment.yml && \
 # code & environment
 #
 FROM env AS env-and-code
+# add image labels
+ARG BUILD_DATE
+ARG BUILD_VERSION
+ARG VCS_REF
+LABEL \
+    org.label-schema.build-date="$BUILD_DATE" \
+    org.label-schema.version="$BUILD_VERSION" \
+    org.label-schema.vcs-ref="$VCS_REF" \
+    org.label-schema.docker.cmd.debug="docker run --rm -it textnn" \
+    org.label-schema.docker.cmd.test="docker run --rm -t textnn pytest --cov -v" \
+    org.label-schema.usage="/code/README.md"
 ADD . /code
+WORKDIR /code
+
 
 #
 # base image w/ CUDA support (18.04)
@@ -71,6 +84,18 @@ RUN ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
 # gpu + code + environment
 #
 FROM gpu-env AS gpu-env-and-code
+# add image labels
+ARG BUILD_DATE
+ARG BUILD_VERSION
+ARG VCS_REF
+LABEL \
+    org.label-schema.build-date="$BUILD_DATE" \
+    org.label-schema.version="$BUILD_VERSION" \
+    org.label-schema.vcs-ref="$VCS_REF" \
+    org.label-schema.docker.cmd.debug="docker run --rm -it textnn" \
+    org.label-schema.docker.cmd.test="docker run --rm -t textnn pytest --cov -v" \
+    org.label-schema.usage="/code/README.md"
 COPY --from=env-and-code /code /code
+WORKDIR /code
 
 CMD [ "/bin/bash" ]
