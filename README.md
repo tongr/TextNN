@@ -19,7 +19,7 @@ Before using the code, please install the necessary software dependencies.
 ### Docker
 Running the code in a docker container can be achieved by building the image:
 ```bash
-docker build --target=env-and-code -t textnn .
+docker build --target=env-and-code --tag textnn .
 ```
 and running the image in interactive mode (conda environment automatically loaded)
 ```bash
@@ -35,7 +35,7 @@ Please note, changes in the container reflect on the code directory of the host 
 #### Docker w/ GPU support
 To enable GPU support build with:
 ```bash
-docker build --target=gpu-env-and-code -t textnn .
+docker build --target=gpu-env-and-code --tag textnn .
 ```
 and run:
 ```bash
@@ -55,6 +55,29 @@ And running the experiments inside the container:
 docker run --rm --runtime=nvidia -v "${PWD}:/code" -it textnn
 ```
 
+#### Docker registry (GitLab)
+To build and push the current version (also marked as latest), run:
+```
+DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" && \
+NAME="registry.gitlab.com/tongr/textnn" && \
+VERSION="$(git describe --always)" && \
+COMMIT="$(git rev-parse HEAD)" && \
+  docker build --target=env-and-code --build-arg "BUILD_DATE=${DATE}" --build-arg "BUILD_NAME=${NAME}" \
+      --build-arg "BUILD_VERSION=${VERSION}" --build-arg "VCS_REF=${COMMIT}" \
+      --tag ${NAME}:${VERSION} --tag ${NAME}/cpu:${VERSION} . && \
+  docker tag ${NAME}:${VERSION} ${NAME}:latest && \
+  docker tag ${NAME}/cpu:${VERSION} ${NAME}/cpu:latest && \
+  docker push ${NAME}:latest && \
+  docker push ${NAME}/cpu:latest && \
+  docker build --target=gpu-env-and-code --build-arg "BUILD_DATE=${DATE}" --build-arg "BUILD_NAME=${NAME}" \
+      --build-arg "BUILD_VERSION=${VERSION}" --build-arg "VCS_REF=${COMMIT}" --tag ${NAME}/gpu:${VERSION} . && \
+  docker tag ${NAME}/gpu:${VERSION} ${NAME}/gpu:latest && \
+  docker push ${NAME}/gpu:latest
+```
+Run tests:
+```
+docker run --rm -it registry.gitlab.com/tongr/textnn:latest pytest --cov -vv
+```
 
 ## Datasets
 
