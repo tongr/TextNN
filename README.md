@@ -1,3 +1,6 @@
+[![pipeline status](https://gitlab.com/tongr/TextNN/badges/master/pipeline.svg?style=flat-square)](https://gitlab.com/tongr/TextNN/pipelines/charts)
+[![coverage](https://gitlab.com/tongr/TextNN/badges/master/coverage.svg?style=flat-square)](https://gitlab.com/tongr/TextNN/pipelines)
+
 # TextNN
 TextNN is a collection of Python code snippets solving different text mining tasks (on varying datasets) using deep learning.
 
