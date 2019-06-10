@@ -72,3 +72,10 @@ def test_fixed_length_generator_source_greedy():
     assert len(iterable) == 5
 
     assert sum(iterable) == 15
+
+
+def test_try_get_len():
+    assert 3 == FixedLengthIterable.try_get_len([1,2,3])
+
+    # make sure the estimated length is None for a normal generator (w/o __len__())
+    assert None is FixedLengthIterable.try_get_len(x for x in [1, 2, 3])
