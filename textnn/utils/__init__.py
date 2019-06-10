@@ -246,7 +246,8 @@ def read_text_file_lines(file_path: Path, ignore_first_n_lines: int = 0, gzip: b
                 for idx, line in enumerate(file):
                     if not idx < ignore_first_n_lines:
                         yield line
-    return line_source()
+    # remove EOL
+    return map(lambda line: line.rstrip("\n"), line_source())
 
 
 def write_text_file(text: str, file_path: Path):
