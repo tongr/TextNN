@@ -3,43 +3,42 @@
 #
 FROM ubuntu:18.04 AS base
 # add default image labels
-LABEL maintainer="tongr@github" \
+LABEL \
+    maintainer="tongr@github" \
     org.label-schema.schema-version="1.0" \
     org.label-schema.vcs-url="https://github.com/tongr/TextNN"
 
 #
 # conda support
 #
-FROM base AS conda
+FROM base AS env
 ARG CONDA_INSTALLER_URL=https://repo.anaconda.com/miniconda/Miniconda3-4.6.14-Linux-x86_64.sh
 # download conda installer
 ADD ${CONDA_INSTALLER_URL} /tmp/install-conda.sh
+# make environment specs available (update "base" environment)
+ADD environment.yml /tmp/environment.yml
 # inspired by continuumio/miniconda3
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     PATH="/opt/conda/bin:${PATH}"
-# install dependencies&conda and clean up afterwards to minimize image size
+# install conda&dependencies + environment and clean up afterwards to minimize image size
 RUN apt-get --quiet update --fix-missing && \
     apt-get --quiet --yes install --no-install-recommends ca-certificates && \
     bash /tmp/install-conda.sh -bfp /opt/conda && \
     ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
+    /opt/conda/bin/conda env update --name base --file /tmp/environment.yml && \
     apt-get --quiet --yes autoremove && apt-get --quiet --yes clean && \
     /opt/conda/bin/conda clean --all --yes && \
-    rm -rf /var/lib/apt/lists/* /var/log/dpkg.log /tmp/install-conda.sh
+    rm -rf /var/lib/apt/lists/* /var/log/dpkg.log /tmp/install-conda.sh /tmp/environment.yml
 
-#
-# conda environment
-#
-FROM conda AS env
-# create environment (use "base" environment)
-ADD environment.yml /tmp/environment.yml
-RUN /opt/conda/bin/conda env update --name base --file /tmp/environment.yml && \
-    /opt/conda/bin/conda clean --all --yes
+CMD [ "/bin/bash" ]
 
 #
 # code & environment
 #
 FROM env AS env-and-code
+ADD . /code
+WORKDIR /code
 # add image labels
 ARG BUILD_DATE
 ARG BUILD_NAME="textnn"
@@ -53,8 +52,6 @@ LABEL \
     org.label-schema.docker.cmd.debug="docker run --rm -it ${BUILD_NAME}/cpu:${BUILD_VERSION}" \
     org.label-schema.docker.cmd.test="docker run --rm -t ${BUILD_NAME}/cpu:${BUILD_VERSION} pytest --cov -v" \
     org.label-schema.usage="/code/README.md"
-ADD . /code
-WORKDIR /code
 
 
 #
@@ -63,7 +60,8 @@ WORKDIR /code
 # requires nvidia-docker v2
 FROM nvidia/cuda:10.0-cudnn7-runtime-ubuntu18.04 as gpu-base
 # add default image labels
-LABEL maintainer="tongr@github" \
+LABEL \
+    maintainer="tongr@github" \
     org.label-schema.schema-version="1.0" \
     org.label-schema.vcs-url="https://github.com/tongr/TextNN"
 
@@ -84,6 +82,8 @@ RUN ln -s /opt/conda/etc/profile.d/conda.sh /etc/profile.d/conda.sh && \
 # gpu + code + environment
 #
 FROM gpu-env AS gpu-env-and-code
+COPY --from=env-and-code /code /code
+WORKDIR /code
 # add image labels
 ARG BUILD_DATE
 ARG BUILD_NAME="textnn"
@@ -97,7 +97,3 @@ LABEL \
     org.label-schema.docker.cmd.debug="docker run --rm -it ${BUILD_NAME}/gpu:${BUILD_VERSION}" \
     org.label-schema.docker.cmd.test="docker run --rm -t ${BUILD_NAME}/gpu:${BUILD_VERSION} pytest --cov -v" \
     org.label-schema.usage="/code/README.md"
-COPY --from=env-and-code /code /code
-WORKDIR /code
-
-CMD [ "/bin/bash" ]

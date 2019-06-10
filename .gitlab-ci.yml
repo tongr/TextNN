@@ -1,7 +1,136 @@
-image: registry.gitlab.com/tongr/textnn/cpu:latest
+stages:
+  - build
+  - test
+  - publish
+
+# inspired by https://blog.callr.tech/building-docker-images-with-gitlab-ci-best-practices/
+build and push:
+  image: docker:git
+  services:
+    - docker:dind
+  stage: build
+  # Only tags should be added to the registry automatically
+  only:
+    - tags
+  before_script:
+    # docker login asks for the password to be passed through stdin for security
+    # we use $CI_JOB_TOKEN here which is a special token provided by GitLab
+    - echo -n $CI_JOB_TOKEN | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY
+  script:
+    #
+    # preparation
+    #
+    # get meta information
+    - DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+    - VERSION="$(git describe --always)"
+    # fetch the latest images (not failing if image is not found)
+    - docker pull "${CI_REGISTRY_IMAGE}/gpu:latest" || true
+    - docker pull "${CI_REGISTRY_IMAGE}/gpu/env:latest" || true
+    - docker pull "${CI_REGISTRY_IMAGE}/cpu:latest" || true
+    - docker pull "${CI_REGISTRY_IMAGE}/cpu/env:latest" || true
+    #
+    # CPU image
+    #
+    # build the cpu image passing build meta information for LABEL
+    # notice the cache-from, which is going to use the image we just pulled locally
+    # the built image is tagged locally with the git description (i.e., tag name)
+    - >
+      docker build
+      --target=env
+      --cache-from "${CI_REGISTRY_IMAGE}/cpu/env:latest"
+      --tag "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}"
+      .
+    - >
+      docker build
+      --target=env-and-code
+      --build-arg "BUILD_DATE=${DATE}"
+      --build-arg "BUILD_NAME=${CI_REGISTRY_IMAGE}"
+      --build-arg "BUILD_VERSION=${VERSION}"
+      --build-arg "VCS_REF=${CI_COMMIT_SHA}"
+      --cache-from "${CI_REGISTRY_IMAGE}/cpu:latest"
+      --cache-from "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}"
+      --tag "${CI_REGISTRY_IMAGE}:${VERSION}"
+      --tag "${CI_REGISTRY_IMAGE}/cpu:${VERSION}"
+      .
+    # push to the images to the GitLab registry
+    - docker push "${CI_REGISTRY_IMAGE}:${VERSION}"
+    - docker push "${CI_REGISTRY_IMAGE}/cpu:${VERSION}"
+    - docker push "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}"
+    #
+    # GPU image
+    #
+    # the built the gpu image is as before (re-use previously created partial images)
+    - >
+      docker build
+      --target=gpu-env
+      --cache-from "${CI_REGISTRY_IMAGE}/gpu/env:latest"
+      --cache-from "${CI_REGISTRY_IMAGE}/cpu:${VERSION}"
+      --cache-from "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}"
+      --tag "${CI_REGISTRY_IMAGE}/gpu/env:${VERSION}"
+      .
+    - >
+      docker build
+      --target=gpu-env-and-code
+      --build-arg "BUILD_DATE=${DATE}"
+      --build-arg "BUILD_NAME=${CI_REGISTRY_IMAGE}"
+      --build-arg "BUILD_VERSION=${VERSION}"
+      --build-arg "VCS_REF=${CI_COMMIT_SHA}"
+      --cache-from "${CI_REGISTRY_IMAGE}/gpu:latest"
+      --cache-from "${CI_REGISTRY_IMAGE}/gpu/env:${VERSION}"
+      --cache-from "${CI_REGISTRY_IMAGE}/cpu:${VERSION}"
+      --cache-from "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}"
+      --tag "${CI_REGISTRY_IMAGE}/gpu:${VERSION}"
+      .
+    # push to the image to the GitLab registry
+    - docker push "${CI_REGISTRY_IMAGE}/gpu:${VERSION}"
+    - docker push "${CI_REGISTRY_IMAGE}/gpu/env:${VERSION}"
+  retry: 0
 
 tests:
+  image: registry.gitlab.com/tongr/textnn/cpu:v0.0.9
   stage: test
+  variables:
+    GIT_DEPTH: "1"
   script:
     - pytest --cov -vv
   coverage: '/TOTAL.*?(\d+%)$/'
+
+publish:
+  image: docker:git
+  services:
+    - docker:dind
+  stage: publish
+  # Only tags on the master should be tagged "latest"
+  only:
+    - tags
+  except:
+    - branches
+  before_script:
+    # docker login asks for the password to be passed through stdin for security
+    # we use $CI_JOB_TOKEN here which is a special token provided by GitLab
+    - echo -n $CI_JOB_TOKEN | docker login -u gitlab-ci-token --password-stdin $CI_REGISTRY
+  script:
+    #
+    # preparation
+    #
+    # get current tag version
+    - VERSION="$(git describe --always)"
+    # Because we have no guarantee that this job will be picked up by the same runner
+    # that built the image in the previous step, we pull it again locally
+    - docker pull "${CI_REGISTRY_IMAGE}:${VERSION}"
+    - docker pull "${CI_REGISTRY_IMAGE}/cpu:${VERSION}"
+    - docker pull "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}"
+    - docker pull "${CI_REGISTRY_IMAGE}/gpu:${VERSION}"
+    - docker pull "${CI_REGISTRY_IMAGE}/gpu/env:${VERSION}"
+    # Then we tag it "latest"
+    - docker tag "${CI_REGISTRY_IMAGE}:${VERSION}" "${CI_REGISTRY_IMAGE}:latest"
+    - docker tag "${CI_REGISTRY_IMAGE}/cpu:${VERSION}" "${CI_REGISTRY_IMAGE}/cpu:latest"
+    - docker tag "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}" "${CI_REGISTRY_IMAGE}/cpu/env:latest"
+    - docker tag "${CI_REGISTRY_IMAGE}/gpu:${VERSION}" "${CI_REGISTRY_IMAGE}/gpu:latest"
+    - docker tag "${CI_REGISTRY_IMAGE}/gpu/env:${VERSION}" "${CI_REGISTRY_IMAGE}/gpu/env:latest"
+    # Annnd we push it.
+    - docker push "${CI_REGISTRY_IMAGE}:latest"
+    - docker push "${CI_REGISTRY_IMAGE}/cpu:latest"
+    - docker push "${CI_REGISTRY_IMAGE}/cpu/env:latest"
+    - docker push "${CI_REGISTRY_IMAGE}/gpu:latest"
+    - docker push "${CI_REGISTRY_IMAGE}/gpu/env:latest"
