@@ -87,7 +87,7 @@ build and push:
   retry: 0
 
 tests:
-  image: registry.gitlab.com/tongr/textnn/cpu:v0.0.9
+  image: registry.gitlab.com/tongr/textnn/cpu:v0.1.0
   stage: test
   variables:
     GIT_DEPTH: "1"
