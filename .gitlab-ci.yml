@@ -25,49 +25,15 @@ build and push:
     - VERSION="$(git describe --always)"
     # fetch the latest images (not failing if image is not found)
     - docker pull "${CI_REGISTRY_IMAGE}/gpu:latest" || true
-    - docker pull "${CI_REGISTRY_IMAGE}/gpu/env:latest" || true
     - docker pull "${CI_REGISTRY_IMAGE}/cpu:latest" || true
-    - docker pull "${CI_REGISTRY_IMAGE}/cpu/env:latest" || true
-    #
-    # CPU image
-    #
-    # build the cpu image passing build meta information for LABEL
-    # notice the cache-from, which is going to use the image we just pulled locally
-    # the built image is tagged locally with the git description (i.e., tag name)
-    - >
-      docker build
-      --target=env
-      --cache-from "${CI_REGISTRY_IMAGE}/cpu/env:latest"
-      --tag "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}"
-      .
-    - >
-      docker build
-      --target=env-and-code
-      --build-arg "BUILD_DATE=${DATE}"
-      --build-arg "BUILD_NAME=${CI_REGISTRY_IMAGE}"
-      --build-arg "BUILD_VERSION=${VERSION}"
-      --build-arg "VCS_REF=${CI_COMMIT_SHA}"
-      --cache-from "${CI_REGISTRY_IMAGE}/cpu:latest"
-      --cache-from "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}"
-      --tag "${CI_REGISTRY_IMAGE}:${VERSION}"
-      --tag "${CI_REGISTRY_IMAGE}/cpu:${VERSION}"
-      .
-    # push to the images to the GitLab registry
-    - docker push "${CI_REGISTRY_IMAGE}:${VERSION}"
-    - docker push "${CI_REGISTRY_IMAGE}/cpu:${VERSION}"
-    - docker push "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}"
+    - docker pull "${CI_REGISTRY_IMAGE}:latest" || true
     #
     # GPU image
     #
     # the built the gpu image is as before (re-use previously created partial images)
-    - >
-      docker build
-      --target=gpu-env
-      --cache-from "${CI_REGISTRY_IMAGE}/gpu/env:latest"
-      --cache-from "${CI_REGISTRY_IMAGE}/cpu:${VERSION}"
-      --cache-from "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}"
-      --tag "${CI_REGISTRY_IMAGE}/gpu/env:${VERSION}"
-      .
+    # passing build meta information for LABELs
+    # notice the `--cache-from`, which is going to use the image we just pulled locally
+    # the built image is tagged locally with the git description (i.e., tag name)
     - >
       docker build
       --target=gpu-env-and-code
@@ -76,14 +42,34 @@ build and push:
       --build-arg "BUILD_VERSION=${VERSION}"
       --build-arg "VCS_REF=${CI_COMMIT_SHA}"
       --cache-from "${CI_REGISTRY_IMAGE}/gpu:latest"
-      --cache-from "${CI_REGISTRY_IMAGE}/gpu/env:${VERSION}"
       --cache-from "${CI_REGISTRY_IMAGE}/cpu:${VERSION}"
-      --cache-from "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}"
+      --cache-from "${CI_REGISTRY_IMAGE}:${VERSION}"
       --tag "${CI_REGISTRY_IMAGE}/gpu:${VERSION}"
       .
-    # push to the image to the GitLab registry
+    #
+    # CPU image
+    #
+    # build the cpu image, because we just build the gpu image, most if not all layers should be cached locally
+    # passing build meta information for LABELs
+    # notice we do not use `--cache-from` because most if not all layers should be cached locally after creating the gpu image
+    # the built image is tagged locally with the git description (i.e., tag name)
+    - >
+      docker build
+      --target=env-and-code
+      --build-arg "BUILD_DATE=${DATE}"
+      --build-arg "BUILD_NAME=${CI_REGISTRY_IMAGE}"
+      --build-arg "BUILD_VERSION=${VERSION}"
+      --build-arg "VCS_REF=${CI_COMMIT_SHA}"
+      --tag "${CI_REGISTRY_IMAGE}:${VERSION}"
+      --tag "${CI_REGISTRY_IMAGE}/cpu:${VERSION}"
+      .
+    #
+    # Push images
+    #
+    # push to the images to the GitLab registry
+    - docker push "${CI_REGISTRY_IMAGE}:${VERSION}"
+    - docker push "${CI_REGISTRY_IMAGE}/cpu:${VERSION}"
     - docker push "${CI_REGISTRY_IMAGE}/gpu:${VERSION}"
-    - docker push "${CI_REGISTRY_IMAGE}/gpu/env:${VERSION}"
   retry: 0
 
 tests:
@@ -119,18 +105,12 @@ publish:
     # that built the image in the previous step, we pull it again locally
     - docker pull "${CI_REGISTRY_IMAGE}:${VERSION}"
     - docker pull "${CI_REGISTRY_IMAGE}/cpu:${VERSION}"
-    - docker pull "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}"
     - docker pull "${CI_REGISTRY_IMAGE}/gpu:${VERSION}"
-    - docker pull "${CI_REGISTRY_IMAGE}/gpu/env:${VERSION}"
     # Then we tag it "latest"
     - docker tag "${CI_REGISTRY_IMAGE}:${VERSION}" "${CI_REGISTRY_IMAGE}:latest"
     - docker tag "${CI_REGISTRY_IMAGE}/cpu:${VERSION}" "${CI_REGISTRY_IMAGE}/cpu:latest"
-    - docker tag "${CI_REGISTRY_IMAGE}/cpu/env:${VERSION}" "${CI_REGISTRY_IMAGE}/cpu/env:latest"
     - docker tag "${CI_REGISTRY_IMAGE}/gpu:${VERSION}" "${CI_REGISTRY_IMAGE}/gpu:latest"
-    - docker tag "${CI_REGISTRY_IMAGE}/gpu/env:${VERSION}" "${CI_REGISTRY_IMAGE}/gpu/env:latest"
     # Annnd we push it.
     - docker push "${CI_REGISTRY_IMAGE}:latest"
     - docker push "${CI_REGISTRY_IMAGE}/cpu:latest"
-    - docker push "${CI_REGISTRY_IMAGE}/cpu/env:latest"
     - docker push "${CI_REGISTRY_IMAGE}/gpu:latest"
-    - docker push "${CI_REGISTRY_IMAGE}/gpu/env:latest"
