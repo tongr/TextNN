@@ -1,5 +1,5 @@
 import logging
-import json
+from textnn.utils import json
 from pathlib import Path
 from typing import Iterable, Tuple, Union, Generator
 

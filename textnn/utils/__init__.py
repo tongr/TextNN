@@ -1,3 +1,7 @@
+try:
+    import ujson as json
+except ImportError:
+    import json as json
 import itertools
 import logging
 from pathlib import Path

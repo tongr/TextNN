@@ -1,6 +1,6 @@
 import gc
 import hashlib
-import json
+from textnn.utils import json
 import logging
 import pickle
 
