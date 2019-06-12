@@ -18,7 +18,7 @@ def amazon_star_rating_generator(data_file: Path) -> Generator[Tuple[str, int], 
 
     is_gzip = data_file.name.endswith('.gz') or data_file.name.endswith('.gzip')
 
-    return (get_text_and_label(line) for line in read_lines(file_path=data_file, ignore_first_n_lines=1, gzip=is_gzip))
+    return (get_text_and_label(line) for line in read_lines(data_file, ignore_first_n_lines=1, compression="gzip"))
 
 
 def amazon_binary_review_generator(data_file: Path, label_3_stars_as=None) -> Generator[Tuple[str, int], None, None]:

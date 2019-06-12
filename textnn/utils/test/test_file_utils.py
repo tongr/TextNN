@@ -1,6 +1,6 @@
 from __future__ import unicode_literals
 from distutils import dir_util
-from pytest import fixture
+from pytest import fixture, raises
 import os
 from pathlib import Path
 
@@ -34,9 +34,33 @@ def test_read_text_file_lines(datadir):
 def test_read_text_file_lines_gzip(datadir):
     test_data_file = datadir / "test.file.gz"
 
-    assert ["1", "2	2", "", "	4"] == list(read_text_file_lines(test_data_file, gzip=True))
+    assert ["1", "2	2", "", "	4"] == list(read_text_file_lines(test_data_file, compression="gzip"))
 
-    assert ["", "	4"] == list(read_text_file_lines(test_data_file, ignore_first_n_lines=2, gzip=True))
+    assert ["", "	4"] == list(read_text_file_lines(test_data_file, ignore_first_n_lines=2, compression="gzip"))
+
+
+def test_read_text_file_lines_bz2(datadir):
+    test_data_file = datadir / "test.file.bz2"
+
+    assert ["1", "2	2", "", "	4"] == list(read_text_file_lines(test_data_file, compression="bz2"))
+
+    assert ["", "	4"] == list(read_text_file_lines(test_data_file, ignore_first_n_lines=2, compression="bz2"))
+
+
+def test_read_text_file_lines_unknown_compression(datadir):
+    test_data_file = datadir / "test.file"
+
+    # make sure unknown compression types throw exceptions
+    with raises(ValueError) as e_info:
+        read_text_file_lines(test_data_file, compression="???")
+
+
+def test_read_text_file_lines_unknown_file(datadir):
+    test_data_file = datadir / "test.file.???"
+
+    # make sure unknown files throw exceptions
+    with raises(AssertionError) as e_info:
+        read_text_file_lines(test_data_file)
 
 
 def test_read_text_file(datadir):
@@ -52,3 +76,8 @@ def test_write_text_file(datadir):
     write_text_file(test_text, file_path=test_data_file)
     assert test_text == read_text_file(test_data_file)
 
+
+def test_join_name():
+    assert "test__file" == join_name(["test", "file"])
+    assert "test__file" == join_name(["test", None, "file", None], ignore_none=True)
+    assert "test<>file" == join_name(["test", "file"], separator="<>")

@@ -228,28 +228,38 @@ def read_text_file(file_path: Path) -> str:
     return text
 
 
-def read_text_file_lines(file_path: Path, ignore_first_n_lines: int = 0, gzip: bool = False) -> Iterable[str]:
+def read_text_file_lines(file_path: Path, ignore_first_n_lines: int = 0, compression: str = None) -> Iterable[str]:
     """
     read lines text file contents
     :param file_path: the file path to read
     :param ignore_first_n_lines: the number of lines to be ignored at the beginning of the file
-    :param gzip: if True, the reader expects a gzipped input file
+    :param compression: if None, the reader does not expect any compression, further options: `"gzip"/"gz"` and `"bz2"`
     :return: the line ontents of the file
     """
     assert file_path.exists(), f"Unable to find text file {file_path}!"
-    if gzip:
+    if "gz" == compression or "gzip" == compression:
         def line_source() -> Generator[str, None, None]:
             import gzip
             with gzip.open(str(file_path), 'rt', encoding='utf8') as file:
                 for idx, line in enumerate(file):
                     if not idx < ignore_first_n_lines:
                         yield line
-    else:
+    elif "bz2" == compression or "bzip2" == compression:
+        def line_source() -> Generator[str, None, None]:
+            import bz2
+            with bz2.open(str(file_path), 'rt', encoding='utf8') as file:
+                for idx, line in enumerate(file):
+                    if not idx < ignore_first_n_lines:
+                        yield line
+    elif compression is None:
         def line_source() -> Generator[str, None, None]:
             with open(str(file_path), 'r', encoding='utf8') as file:
                 for idx, line in enumerate(file):
                     if not idx < ignore_first_n_lines:
                         yield line
+    else:
+        raise ValueError(f"Unknown compression type '{compression}'!")
+
     # remove EOL
     return map(lambda line: line.rstrip("\n"), line_source())
 
